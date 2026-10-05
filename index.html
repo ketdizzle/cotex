@@ -1014,14 +1014,17 @@ function blankHolesLocal18(){ return Array.from({length:18}, ()=>null); }
 const ROUND_RATING_SLOPE_DEFAULTS = { r1:{rating:69.9, slope:133}, r2:{rating:69.7, slope:132}, r3:{rating:69.8, slope:129} };
 
 // --- Game settings (per round). Editable in Setup; defaults match the agreed rules. ---
-const GAME_LABELS = { trad6:'Traditional Sixes', shamble:'Shamble', bbb:'Bingo Bango Bongo', stableford:'Stableford' };
+const GAME_LABELS = { trad6:'Traditional Sixes', shamble:'Shamble', bbb:'Bingo Bango Bongo', stableford:'Stableford', matchplay:'Match Play', ryder:'Ryder Cup' };
 function defaultGameSettings(){
   return {
     shambleSize: 2,           // players per shamble team (2, 3 or 4)
     shamblePct: 100,          // % of each player's handicap used (net)
     bbbPoints: { green:1, closest:1, first:1 },   // Bingo / Bango / Bongo points per hole (no point on a tie or blank)
     stablefordPct: 100,       // % of each player's handicap used (net)
-    stablefordPoints: { albatross:5, eagle:4, birdie:3, par:2, bogey:1, double:0 }
+    stablefordPoints: { albatross:5, eagle:4, birdie:3, par:2, bogey:1, double:0 },
+    matchPct: 100,            // Match Play: % of handicap (net)
+    ryderPct: 100,            // Ryder Cup: % of handicap (net)
+    ryderPoints: { win:1, halve:0.5, loss:0 }   // Ryder Cup custom scoring per singles match
   };
 }
 function mergeGameSettings(gs){
@@ -1030,7 +1033,8 @@ function mergeGameSettings(gs){
   return {
     ...d, ...g,
     bbbPoints: { ...d.bbbPoints, ...(g.bbbPoints || {}) },
-    stablefordPoints: { ...d.stablefordPoints, ...(g.stablefordPoints || {}) }
+    stablefordPoints: { ...d.stablefordPoints, ...(g.stablefordPoints || {}) },
+    ryderPoints: { ...d.ryderPoints, ...(g.ryderPoints || {}) }
   };
 }
 
@@ -1070,6 +1074,13 @@ function normalizeState(s){
     useCourseHandicap: (r.useCourseHandicap === true || r.useCourseHandicap === false) ? r.useCourseHandicap : null,
     handicapOverrides: (r.handicapOverrides && typeof r.handicapOverrides === 'object') ? r.handicapOverrides : {},
     gameSettings: mergeGameSettings(r.gameSettings),
+    ryder: {
+      aName: (r.ryder && r.ryder.aName) || 'Team A',
+      bName: (r.ryder && r.ryder.bName) || 'Team B',
+      size: (r.ryder && Number(r.ryder.size)) || 2,
+      a: (r.ryder && Array.isArray(r.ryder.a)) ? r.ryder.a : [],
+      b: (r.ryder && Array.isArray(r.ryder.b)) ? r.ryder.b : []
+    },
     shambleTeams: Array.isArray(r.shambleTeams) ? r.shambleTeams.map(t=>({
       id: (t && t.id) || ('st-' + Math.random().toString(36).slice(2)),
       players: (t && Array.isArray(t.players)) ? t.players : []
@@ -1415,6 +1426,80 @@ function stablefordTotals(roundId){
   });
 }
 
+// Head-to-head match between two players, net of pct% of handicap.
+// Returns the running margin (positive = a is up), holes played, and whether the match is over.
+function matchStatus(round, a, b, pct){
+  let diff = 0, thru = 0, decided = false;
+  for(let h=1; h<=18; h++){
+    const na = netScorePct(round, a, h, pct), nb = netScorePct(round, b, h, pct);
+    if(na===null || nb===null) break;
+    thru = h;
+    if(na<nb) diff++; else if(nb<na) diff--;
+    if(Math.abs(diff) > 18-h){ decided = true; break; }
+  }
+  if(thru===18) decided = true;
+  return { diff, thru, decided };
+}
+function matchText(name1, name2, st){
+  if(st.thru===0) return `${name1} v ${name2} — not started`;
+  if(st.decided){
+    if(st.diff===0) return `${name1} halved with ${name2}`;
+    const w = st.diff>0 ? name1 : name2;
+    const m = Math.abs(st.diff);
+    const left = 18 - st.thru;
+    return `${w} wins ${left>0 ? m+'&'+left : m+' up'}`;
+  }
+  if(st.diff===0) return `${name1} v ${name2} — all square thru ${st.thru}`;
+  const lead = st.diff>0 ? name1 : name2;
+  return `${name1} v ${name2} — ${lead} ${Math.abs(st.diff)} up thru ${st.thru}`;
+}
+
+// Match Play: every pair inside each foursome (Tee Group) plays a match.
+// Win = 1, halve = ½ (only once the match is decided).
+function matchPlayTotals(roundId){
+  const round = getRound(roundId);
+  const pct = gsNum(round, 'matchPct', 100);
+  const out = {};
+  state.players.forEach(p=>out[p.name] = { pts:0, matches:0 });
+  const matches = [];
+  (round.teeGroups||[]).forEach(g=>{
+    const ps = (g.players||[]).filter(Boolean);
+    for(let i=0;i<ps.length;i++) for(let j=i+1;j<ps.length;j++){
+      const st = matchStatus(round, ps[i], ps[j], pct);
+      matches.push({ a:ps[i], b:ps[j], st, group:g.name||'Group' });
+      if(!st.decided) continue;
+      const ptsA = st.diff>0 ? 1 : st.diff<0 ? 0 : 0.5;
+      if(out[ps[i]]){ out[ps[i]].pts += ptsA; out[ps[i]].matches++; }
+      if(out[ps[j]]){ out[ps[j]].pts += 1-ptsA; out[ps[j]].matches++; }
+    }
+  });
+  return { totals: out, matches };
+}
+
+// Ryder Cup: team A vs team B, singles matches in slot order (A1 v B1, A2 v B2, ...).
+// Points come from the custom scoring settings for each match result.
+function ryderTotals(roundId){
+  const round = getRound(roundId);
+  const pct = gsNum(round, 'ryderPct', 100);
+  const pts = round.gameSettings.ryderPoints;
+  const r = round.ryder;
+  const n = Math.min(r.a.length, r.b.length);
+  let aTotal = 0, bTotal = 0, played = 0;
+  const matches = [];
+  for(let i=0;i<n;i++){
+    const a = r.a[i], b = r.b[i];
+    if(!a || !b) continue;
+    const st = matchStatus(round, a, b, pct);
+    matches.push({ a, b, st });
+    if(!st.decided) continue;
+    played++;
+    if(st.diff>0){ aTotal += Number(pts.win)||0; bTotal += Number(pts.loss)||0; }
+    else if(st.diff<0){ bTotal += Number(pts.win)||0; aTotal += Number(pts.loss)||0; }
+    else { aTotal += Number(pts.halve)||0; bTotal += Number(pts.halve)||0; }
+  }
+  return { aTotal, bTotal, played, matches };
+}
+
 // Board shown under Gross and Net for a round whose format is one of the new games.
 function gameBoardHtml(round){
   if(!GAME_LABELS[round.format]) return '';
@@ -1471,6 +1556,35 @@ function gameBoardHtml(round){
           <span class="lb-score ${r.count===0?'dim':''}">${r.count===0?'—':r.pts}</span>
         </div>`).join('')}</div>
       <p class="muted">Net score (${gsNum(round,'stablefordPct',100)}% of handicap) against par. Highest points wins.</p>`;
+  }
+
+  if(round.format==='matchplay'){
+    const { totals, matches } = matchPlayTotals(round.id);
+    const rows = state.players.map(p=>({ name:p.name, pts:totals[p.name].pts, m:totals[p.name].matches }))
+      .sort((a,b)=> (a.m===0)-(b.m===0) || b.pts-a.pts);
+    body = matches.length ? `<div class="card">${rows.map((r,i)=>`
+        <div class="lb-row">
+          <span class="lb-rank">${r.m===0?'–':i+1}</span>
+          <span class="lb-name">${escapeHtml(r.name)}<span class="hcp">${r.m} ${r.m===1?'match':'matches'} decided</span></span>
+          <span class="lb-score ${r.m===0?'dim':''}">${fmtPts(r.pts)}</span>
+        </div>`).join('')}</div>
+      <div class="card">${matches.map(m=>`<div class="muted" style="margin:4px 0;">${escapeHtml(matchText(m.a, m.b, m.st))}</div>`).join('')}</div>
+      <p class="muted">Every pair in a foursome plays one match at ${gsNum(round,'matchPct',100)}% of handicap. Win = 1, halve = ½.</p>`
+      : `<div class="muted">Set up your groups for this round in Setup to see matches.</div>`;
+  }
+
+  if(round.format==='ryder'){
+    const t = ryderTotals(round.id);
+    const r = round.ryder;
+    const pts = round.gameSettings.ryderPoints;
+    const filled = Math.min(r.a.filter(Boolean).length, r.b.filter(Boolean).length) > 0;
+    body = filled ? `<div class="card">
+        <div class="lb-row"><span class="lb-name">${escapeHtml(r.aName)}</span><span class="lb-score">${fmtPts(t.aTotal)}</span></div>
+        <div class="lb-row"><span class="lb-name">${escapeHtml(r.bName)}</span><span class="lb-score">${fmtPts(t.bTotal)}</span></div>
+      </div>
+      <div class="card">${t.matches.map(m=>`<div class="muted" style="margin:4px 0;">${escapeHtml(matchText(m.a, m.b, m.st))}</div>`).join('')}</div>
+      <p class="muted">Win = ${pts.win}, halve = ${pts.halve}, loss = ${pts.loss}. Singles matches pair by position in each team list, at ${gsNum(round,'ryderPct',100)}% of handicap.</p>`
+      : `<div class="muted">Set up both teams for this round in Setup to see the match.</div>`;
   }
 
   return lbSection(`round-${round.id}-game`, title, body);
@@ -1989,7 +2103,41 @@ function renderGameSettings(round){
         ${numField('stablefordPoints.double', t.double, 'Double bogey or worse')}
       </div>`;
   }
-  return `<details class="lb-details" data-details-key="${key}" ${open}>
+  if(f==='matchplay'){
+    inner = `
+      ${numField('matchPct', gs.matchPct, 'Handicap % applied (100 = full handicap)')}
+      <p class="muted" style="margin:8px 0 0;">Every pair inside each foursome (set up under Tee Groups) plays a match. Win = 1 point, halve = ½.</p>`;
+  }
+  if(f==='ryder'){
+    const r = round.ryder;
+    const size = r.size;
+    const teamBlock = (side, label)=>`
+      <div class="group-box">
+        <div class="group-label">${label}</div>
+        <label>Team name</label>
+        <input type="text" data-ry-name="${round.id}|${side}" value="${escapeAttr(side==='a'?r.aName:r.bName)}">
+        ${Array.from({length:size}, (_,slot)=>`
+          <select data-ry-slot="${round.id}:${side}:${slot}">
+            <option value="">— select player —</option>
+            ${sortedPlayers().map(p=>`<option value="${escapeAttr(p.name)}" ${r[side][slot]===p.name?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+          </select>`).join('')}
+      </div>`;
+    inner = `
+      <label>Players per side (1 v 1 up to 8 v 8)</label>
+      <select data-ry-size="${round.id}">
+        ${[1,2,3,4,5,6,7,8].map(n=>`<option value="${n}" ${size===n?'selected':''}>${n} v ${n}</option>`).join('')}
+      </select>
+      ${numField('ryderPct', gs.ryderPct, 'Handicap % applied (100 = full handicap)')}
+      <p class="muted" style="margin:8px 0 12px;">Custom scoring for each singles match:</p>
+      <div class="row-flex">
+        ${numField('ryderPoints.win', gs.ryderPoints.win, 'Points for a win')}
+        ${numField('ryderPoints.halve', gs.ryderPoints.halve, 'Points for a halve')}
+        ${numField('ryderPoints.loss', gs.ryderPoints.loss, 'Points for a loss')}
+      </div>
+      ${teamBlock('a', 'Team A')}
+      ${teamBlock('b', 'Team B')}`;
+  }
+  return `<details class=\"lb-details\" data-details-key=\"${key}\" ${open}>
     <summary>${escapeHtml(GAME_LABELS[f])} settings for ${escapeHtml(round.label)}</summary>
     <div class="card">${inner}</div>
   </details>`;
@@ -2077,6 +2225,8 @@ function renderSetup(){
         <option value="shamble" ${round.format==='shamble'?'selected':''}>Shamble (net, teams of 2, 3 or 4)</option>
         <option value="bbb" ${round.format==='bbb'?'selected':''}>Bingo Bango Bongo (individual, points per hole)</option>
         <option value="stableford" ${round.format==='stableford'?'selected':''}>Stableford (net, points per hole)</option>
+        <option value="matchplay" ${round.format==='matchplay'?'selected':''}>Match Play (head-to-head within each group)</option>
+        <option value="ryder" ${round.format==='ryder'?'selected':''}>Ryder Cup (two teams, 1 to 8 a side)</option>
       </select>
       <label style="margin-top:12px;">Course Handicap for this round</label>
       <select data-round-usech="${round.id}">
@@ -2630,6 +2780,27 @@ function attachHandlers(){
       b.onclick = async ()=>{
         const [rid, ti] = b.dataset.removeShteam.split(':');
         getRound(rid).shambleTeams.splice(Number(ti), 1);
+        await saveState(); render();
+      };
+    });
+
+    document.querySelectorAll('[data-ry-name]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        const [rid, side] = inp.dataset.ryName.split('|');
+        const r = getRound(rid).ryder;
+        if(side==='a') r.aName = inp.value.trim() || 'Team A'; else r.bName = inp.value.trim() || 'Team B';
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-ry-size]').forEach(sel=>{
+      sel.onchange = async ()=>{ getRound(sel.dataset.rySize).ryder.size = Number(sel.value); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-ry-slot]').forEach(sel=>{
+      sel.onchange = async ()=>{
+        const [rid, side, slot] = sel.dataset.rySlot.split(':');
+        const list = getRound(rid).ryder[side];
+        while(list.length <= Number(slot)) list.push('');
+        list[Number(slot)] = sel.value;
         await saveState(); render();
       };
     });
