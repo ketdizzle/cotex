@@ -1,0 +1,3315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#16241C">
+<meta name="format-detection" content="telephone=no, date=no">
+<title>Tournament Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<style>
+  :root{
+    --board:#16241C;
+    --board-alt:#1E3226;
+    --board-line: rgba(241,234,218,0.12);
+    --amber:#E8B94A;
+    --amber-dim: rgba(232,185,74,0.55);
+    --cream:#F1EADA;
+    --ink:#20261D;
+    --red-over:#C1543A;
+    --green-under:#6FA05A;
+    --radius: 4px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html{ overscroll-behavior-y: contain; }
+  button, .clear-x, nav.tabs button, .toplevel-tabs button, summary, .hole-grid button, label{
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  button:active, .btn:active, .clear-x:active, .toplevel-tabs button:active{
+    opacity: 0.7;
+  }
+  input, select, textarea{
+    touch-action: manipulation;
+  }
+  html,body{margin:0;padding:0;}
+  body{
+    background: var(--board);
+    color: var(--cream);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+  }
+  #app{
+    width:100%;
+    max-width:560px;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    background: var(--board);
+  }
+  header{
+    padding: max(22px, env(safe-area-inset-top, 0px)) 20px 16px;
+    border-bottom: 1px solid var(--board-line);
+    background: linear-gradient(180deg, var(--board-alt), var(--board));
+  }
+  #tournamentImage{
+    width: 100%;
+    max-height: 140px;
+    object-fit: cover;
+    border-radius: 6px;
+    margin-bottom: 14px;
+  }
+  header .eyebrow{
+    font-family:'Oswald',sans-serif;
+    letter-spacing: 0.04em;
+    font-size: 12px;
+    color: var(--amber-dim);
+    margin: 0 0 4px;
+  }
+  header h1{
+    font-family:'Oswald',sans-serif;
+    font-weight:600;
+    font-size: 26px;
+    margin:0;
+    color: var(--amber);
+    letter-spacing: 0.01em;
+  }
+  header .sub{
+    font-size: 13px;
+    color: var(--cream);
+    opacity:0.65;
+    margin-top: 4px;
+  }
+  main{
+    flex:1;
+    padding: 18px 16px 90px;
+    overflow-y:auto;
+  }
+  nav.tabs{
+    position: sticky;
+    bottom:0;
+    display:flex;
+    border-top: 1px solid var(--board-line);
+    background: var(--board-alt);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  nav.tabs button{
+    flex:1;
+    background:none;
+    border:none;
+    color: var(--cream);
+    opacity:0.55;
+    font-family:'Oswald',sans-serif;
+    font-size: 12px;
+    letter-spacing:0.02em;
+    padding: 14px 2px 12px;
+    cursor:pointer;
+    border-top: 2px solid transparent;
+  }
+  nav.tabs button.active{
+    opacity:1;
+    color: var(--amber);
+    border-top: 2px solid var(--amber);
+  }
+  h2.section-title{
+    font-family:'Oswald',sans-serif;
+    font-weight:500;
+    font-size: 15px;
+    letter-spacing:0.02em;
+    color: var(--amber);
+    margin: 22px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--board-line);
+  }
+  h2.section-title:first-child{ margin-top:0; }
+  h3.sub-title{
+    font-family:'Oswald',sans-serif;
+    font-weight:500;
+    font-size: 13px;
+    color: var(--cream);
+    opacity: 0.75;
+    margin: 14px 0 8px;
+  }
+  .card{
+    background: var(--board-alt);
+    border: 1px solid var(--board-line);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+  .lb-row{
+    display:flex;
+    align-items:center;
+    padding: 10px 2px;
+    border-bottom: 1px solid var(--board-line);
+  }
+  .lb-row:last-child{border-bottom:none;}
+  .lb-rank{
+    width: 26px;
+    font-family:'Oswald',sans-serif;
+    color: var(--amber-dim);
+    font-size: 14px;
+  }
+  .lb-name{
+    flex:1;
+    font-size: 15px;
+    font-weight:500;
+  }
+  .lb-name .hcp{
+    font-size:11px;
+    opacity:0.5;
+    font-weight:400;
+    margin-left:6px;
+  }
+  .lb-score{
+    font-family:'Oswald',sans-serif;
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+    min-width: 46px;
+    text-align:right;
+  }
+  .lb-score.dim{ opacity:0.35; }
+  select, input[type=text], input[type=number], input[type=date]{
+    width:100%;
+    background: var(--cream);
+    color: var(--ink);
+    border: none;
+    border-radius: var(--radius);
+    padding: 12px 12px;
+    font-size: 16px;
+    font-family:'IBM Plex Sans', sans-serif;
+    margin-bottom: 12px;
+  }
+  input[type=number].hole-input{
+    padding: 8px 4px;
+    text-align:center;
+    font-family:'Oswald',sans-serif;
+    margin-bottom:0;
+  }
+  label{
+    display:block;
+    font-size: 12px;
+    color: var(--amber-dim);
+    margin-bottom: 6px;
+    font-family:'Oswald',sans-serif;
+    letter-spacing:0.02em;
+  }
+  .btn{
+    width:100%;
+    background: var(--amber);
+    color: var(--ink);
+    border:none;
+    border-radius: var(--radius);
+    padding: 13px;
+    font-family:'Oswald',sans-serif;
+    font-size: 15px;
+    letter-spacing:0.02em;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .btn.secondary{
+    background: transparent;
+    border: 1px solid var(--amber-dim);
+    color: var(--amber);
+  }
+  .btn.tiny{
+    width:auto;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  .hole-grid{
+    display:grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .hole-grid button{
+    aspect-ratio: 1;
+    background: var(--board);
+    border: 1px solid var(--board-line);
+    color: var(--cream);
+    border-radius: var(--radius);
+    font-family:'Oswald',sans-serif;
+    font-size:14px;
+    cursor:pointer;
+    position:relative;
+  }
+  .hole-grid button.active{
+    background: var(--amber);
+    color: var(--ink);
+    border-color: var(--amber);
+  }
+  .hole-grid button .dot{
+    position:absolute;
+    top:3px; right:4px;
+    width:5px; height:5px;
+    border-radius:50%;
+    background: var(--green-under);
+  }
+  .row-flex{ display:flex; gap:8px; align-items:center; }
+  .row-flex > *{flex:1;}
+  .list-item{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--board-line);
+    font-size: 14px;
+    gap:8px;
+  }
+  .list-item:last-child{border-bottom:none;}
+  .list-item input[type=number]{ width: 70px; margin:0; padding:8px; }
+  .remove-x{
+    color: var(--red-over);
+    background:none;
+    border:none;
+    font-size: 18px;
+    cursor:pointer;
+    padding: 0 6px;
+  }
+  .muted{ color: var(--cream); opacity:0.55; font-size:13px; }
+  .status-msg{ text-align:center; font-size: 13px; color: var(--amber); margin-top: 10px; min-height: 18px; }
+  .empty-state{ text-align:center; padding: 40px 20px; color: var(--cream); opacity:0.5; font-size: 14px; }
+  .tag{
+    display:inline-block;
+    font-family:'Oswald',sans-serif;
+    font-size: 11px;
+    color: var(--amber-dim);
+    border: 1px solid var(--amber-dim);
+    border-radius: 3px;
+    padding: 2px 6px;
+    margin-left: 6px;
+  }
+  .scorecard-grid{
+    display:grid;
+    grid-template-columns: 34px 1fr 1fr;
+    gap:4px 8px;
+    align-items:center;
+    font-size:13px;
+  }
+  .scorecard-grid .hdr{
+    font-family:'Oswald',sans-serif;
+    color: var(--amber-dim);
+    font-size:11px;
+    padding-bottom:4px;
+    border-bottom: 1px solid var(--board-line);
+    margin-bottom:4px;
+  }
+  .scorecard-grid .hole-num{
+    font-family:'Oswald',sans-serif;
+    color: var(--cream);
+    opacity:0.6;
+  }
+  .toplevel-tabs{
+    display:flex;
+    gap:6px;
+    margin-bottom:16px;
+    flex-wrap:wrap;
+  }
+  .toplevel-tabs button{
+    background: var(--board-alt);
+    border:1px solid var(--board-line);
+    color: var(--cream);
+    opacity:0.6;
+    font-family:'Oswald',sans-serif;
+    font-size:12px;
+    padding: 8px 12px;
+    border-radius: 3px;
+    cursor:pointer;
+  }
+  .toplevel-tabs button.active{
+    opacity:1;
+    color: var(--ink);
+    background: var(--amber);
+    border-color: var(--amber);
+  }
+  .group-box{
+    border: 1px solid var(--board-line);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+  .group-box .group-label{
+    font-family:'Oswald',sans-serif;
+    font-size: 12px;
+    color: var(--amber-dim);
+    margin-bottom:8px;
+  }
+  .group-box select{ margin-bottom: 8px; }
+  .group-box select:last-of-type{ margin-bottom:0; }
+  details{ margin-bottom: 12px; }
+  summary{
+    cursor:pointer;
+    font-family:'Oswald',sans-serif;
+    font-size:13px;
+    color: var(--amber);
+    padding: 6px 0;
+  }
+  details.lb-details{ margin-bottom: 0; }
+  summary.section-title{
+    cursor:pointer;
+    list-style:none;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  summary.section-title::-webkit-details-marker{ display:none; }
+  summary.section-title::after{
+    content:'▾';
+    font-size:12px;
+    color: var(--amber-dim);
+    margin-left:10px;
+    transform: rotate(-90deg);
+    transition: transform 0.15s ease;
+  }
+  details[open]>summary.section-title::after{ transform: rotate(0deg); }
+  .hole-list{
+    padding: 6px 12px;
+  }
+  .hole-row{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--board-line);
+  }
+  .hole-row:last-child{ border-bottom:none; }
+  .hole-row-num{
+    font-family:'Oswald',sans-serif;
+    font-size: 16px;
+    color: var(--amber);
+    width: 22px;
+    text-align:center;
+    flex-shrink:0;
+  }
+  .hole-row-par{
+    font-size: 12px;
+    color: var(--cream);
+    opacity: 0.5;
+    width: 46px;
+    flex-shrink:0;
+  }
+  .hole-row-input{
+    flex:1;
+    text-align:center;
+    font-family:'Oswald',sans-serif;
+    font-size: 17px;
+    margin-bottom:0;
+    padding: 9px 6px;
+  }
+  .clear-x{
+    background:none;
+    border:none;
+    color: var(--red-over);
+    font-size: 20px;
+    line-height:1;
+    width: 22px;
+    flex-shrink:0;
+    cursor:pointer;
+  }
+  .hole-row-status{
+    font-size: 11px;
+    color: var(--green-under);
+    width: 44px;
+    flex-shrink:0;
+    text-align:right;
+    opacity:0;
+    transition: opacity 0.2s;
+  }
+  .hole-row-status.show{ opacity:1; }
+  .hole-row-status.error{ color: var(--red-over); }
+  .hole-row{ flex-wrap: wrap; }
+  .hole-extra{
+    flex-basis: 100%;
+    display:flex;
+    align-items:center;
+    gap: 8px;
+    margin-top: 6px;
+    padding-left: 32px;
+    font-size: 12px;
+    color: var(--amber-dim);
+    font-family:'Oswald',sans-serif;
+  }
+  .hole-extra input[type=number]{
+    width: 58px;
+    padding: 6px 4px;
+    margin: 0;
+    text-align:center;
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size: 16px;
+  }
+  .hole-extra label{
+    display:flex;
+    align-items:center;
+    gap: 5px;
+    margin:0;
+    font-size: 13px;
+    color: var(--cream);
+    opacity:0.85;
+    cursor:pointer;
+  }
+  .hole-extra input[type=checkbox]{
+    width:16px; height:16px; margin:0;
+  }
+  .kp-ld-card{
+    display:flex;
+    flex-direction:column;
+    gap: 10px;
+  }
+  .kp-ld-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding: 6px 2px;
+  }
+  .kp-ld-label{
+    font-family:'Oswald',sans-serif;
+    font-size: 12px;
+    color: var(--amber-dim);
+  }
+  .kp-ld-value{
+    font-size: 14px;
+    text-align:right;
+  }
+  .lb-score-wrap{
+    display:flex;
+    flex-direction:row;
+    align-items:baseline;
+    justify-content:flex-end;
+    gap: 8px;
+    min-width: 46px;
+  }
+  .lb-topar{
+    font-family:'Oswald',sans-serif;
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing:0.02em;
+  }
+  .lb-topar.under{ color: var(--green-under); }
+  .lb-topar.over{ color: var(--red-over); }
+  .lb-topar.even{ color: var(--amber-dim); }
+  .lb-thru{
+    font-family:'Oswald',sans-serif;
+    font-size: 13px;
+    letter-spacing:0.02em;
+    color: var(--text-dim, #9aa0a6);
+    text-transform: uppercase;
+  }
+
+  /* ---- Password sign-in popup ---- */
+  .auth-overlay{
+    position:fixed; inset:0; z-index:1000;
+    background: rgba(10,18,13,0.82);
+    display:flex; align-items:center; justify-content:center;
+    padding:20px;
+  }
+  .auth-box{
+    width:100%; max-width:360px;
+    background: var(--board-alt);
+    border:1px solid var(--board-line);
+    border-top:3px solid var(--amber);
+    border-radius: var(--radius);
+    padding:20px 18px 16px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .auth-title{
+    font-family:'Oswald',sans-serif;
+    font-size:20px; letter-spacing:0.02em;
+    color: var(--amber);
+    margin-bottom:6px;
+  }
+  .auth-msg{ font-size:13px; line-height:1.4; opacity:0.75; margin:0 0 14px; }
+  .auth-input{
+    width:100%;
+    background: var(--cream); color: var(--ink);
+    border:none; border-radius: var(--radius);
+    padding:12px; font-size:16px;
+    font-family:'IBM Plex Sans', sans-serif;
+    margin-bottom:8px;
+  }
+  .auth-error{ min-height:18px; font-size:12px; color:#E58A72; margin-bottom:10px; }
+  .auth-actions{ display:flex; gap:10px; }
+  .auth-actions .btn{ flex:1; }
+  /* ---------- CHAT TAB ---------- */
+  nav.tabs button{ position:relative; }
+  nav.tabs button.chat-unread:not(.active){ opacity:1; color: var(--amber); }
+  nav.tabs button[hidden]{ display:none; }
+  .chat-badge{
+    position:absolute; top:5px; left:50%; margin-left:12px;
+    min-width:16px; height:16px; padding:0 4px; border-radius:8px;
+    background: var(--red-over); color:#fff;
+    font-family:'Oswald',sans-serif; font-size:10px; line-height:16px; text-align:center;
+  }
+  .chat-badge[hidden]{ display:none; }
+  .chat-wrap{ position:relative; }
+  .chat-list{
+    height:50vh; height:50dvh; min-height:260px; max-height:520px;
+    overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+    background: rgba(0,0,0,0.18);
+    border:1px solid var(--board-line); border-radius: var(--radius);
+    padding:10px; display:flex; flex-direction:column; gap:8px;
+  }
+  .chat-row{ display:flex; flex:0 0 auto; }
+  .chat-row.mine{ justify-content:flex-end; }
+  .chat-bubble{
+    max-width:82%;
+    background: var(--board-alt); border:1px solid var(--board-line);
+    border-radius:10px 10px 10px 2px; padding:7px 10px 8px;
+  }
+  .chat-row.mine .chat-bubble{
+    background: var(--amber); color: var(--ink); border-color:transparent;
+    border-radius:10px 10px 2px 10px;
+  }
+  .chat-meta{ display:flex; align-items:baseline; gap:8px; margin-bottom:2px; }
+  .chat-name{ font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:0.02em; font-weight:500; }
+  .chat-row.mine .chat-name{ color: var(--ink); opacity:0.75; }
+  .chat-time{ font-size:10px; opacity:0.5; white-space:nowrap; }
+  .chat-text{ font-size:15px; line-height:1.35; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; }
+  .chat-del{
+    margin-left:auto; background:none; border:none; padding:0 2px;
+    color: var(--red-over); font-size:18px; line-height:1; cursor:pointer;
+  }
+  .chat-row.mine .chat-del{ color: var(--ink); }
+  .chat-empty{ margin:auto; opacity:0.5; font-size:13px; text-align:center; }
+  .chat-newpill{
+    position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
+    background: var(--amber); color: var(--ink); border:none; border-radius:999px;
+    padding:6px 14px; font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:0.02em;
+    box-shadow:0 2px 8px rgba(0,0,0,0.45); cursor:pointer;
+  }
+  .chat-newpill[hidden]{ display:none; }
+  .chat-status{ font-size:12px; color: var(--red-over); margin-bottom:8px; }
+  .chat-status[hidden]{ display:none; }
+  .chat-inputrow{ display:flex; gap:8px; align-items:stretch; margin-top:10px; }
+  .chat-inputrow input[type=text]{ flex:1; min-width:0; margin-bottom:0; }
+  .chat-inputrow .btn{ width:auto; padding:0 20px; }
+  .chat-as, .chat-foot{ font-size:12px; opacity:0.65; margin-top:10px; }
+  .chat-as{ margin-top:12px; }
+  .chat-join{ margin:12px 0 0; }
+  .chat-join .chat-inputrow{ margin-top:0; }
+  .chat-link{
+    background:none; border:none; padding:0; color: var(--amber);
+    font:inherit; text-decoration:underline; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <img id="tournamentImage" src="" alt="" style="display:none;">
+    <p class="eyebrow">LIVE SCOREBOARD</p>
+    <h1 id="tournamentName">Tournament</h1>
+    <p class="sub" id="headerSub">loading...</p>
+  </header>
+  <main id="main"></main>
+  <nav class="tabs">
+    <button data-tab="leaderboard" class="active">BOARD</button>
+    <button data-tab="enter">ENTER</button>
+    <button data-tab="chat" hidden>CHAT<span class="chat-badge" id="chatBadge" hidden></span></button>
+    <button data-tab="setup">SETUP</button>
+  </nav>
+</div>
+
+<script>
+const STORAGE_KEY = 'tournament-data-v2';
+
+// Firebase Authentication accounts (create both in Firebase Console → Authentication → Users).
+// Only the EMAIL addresses live here — the passwords never appear in this file.
+const SCORER_EMAIL = 'user@cotex2026.com';   // shared by everyone entering scores
+const ADMIN_EMAIL  = 'admin@cotex2026.com';   // organizer only — Setup tab and all settings changes
+
+const ROSTER_R1 = ['Surag','Niki','Woody','Sanjay','Ketal','Vikas','Shiv','Shaan','Samir','James','Parag','Ian','Roshan','Cham','Rishee','Archish'];
+
+// partnerOrder[i] = which slot (1,2,or3) pairs with slot 0 during segment i (holes 1-6, 7-12, 13-18).
+// The other two slots automatically pair with each other.
+const QUADS_R1 = [
+  { players:['Surag','Niki','Woody','Sanjay'], partnerOrder:[2,3,1] },
+  { players:['Ketal','Vikas','Shiv','Shaan'],   partnerOrder:[3,1,2] },
+  { players:['Samir','James','Parag','Ian'],    partnerOrder:[2,3,1] },
+  { players:['Roshan','Cham','Rishee','Archish'], partnerOrder:[2,3,1] }
+];
+
+// Pre-loaded scorecards, keyed by exact course name as entered in Setup.
+const KNOWN_SCORECARDS = {
+  'Twin Warriors': {
+    par:      [5,4,4,3,4,4,4,5,3, 4,4,5,3,4,3,5,4,4],
+    hcpIndex: [9,7,3,15,13,11,1,5,17, 2,16,4,14,18,12,8,10,6]
+  },
+  'Paako Ridge': {
+    par:      [4,4,5,3,5,4,4,3,4, 4,4,5,4,3,5,3,4,4],
+    hcpIndex: [13,11,5,17,7,15,1,9,3, 10,2,14,16,8,4,18,12,6]
+  },
+  'Sandia Resort': {
+    par:      [4,4,3,4,5,4,5,3,4, 4,5,3,4,4,4,3,5,4],
+    hcpIndex: [11,3,17,15,5,1,9,13,7, 12,2,18,16,4,8,10,14,6]
+  }
+};
+let state = null;
+let currentTab = 'leaderboard';
+let lbView = 'overall'; // overall | r1 | r2 | r3
+let entrySel = { round: 'r1', player: '', hole: 1 };
+let entryMode = 'player'; // 'player' | 'hole'
+let pollTimer = null;
+// Tracks open/closed state of <details> sections across re-renders (not persisted to backend, per-browser only).
+const uiDetailsState = {};
+
+// Wraps a leaderboard section in a collapsible <details>, defaulting to open the first time it's seen.
+function lbSection(key, titleHtml, innerHtml){
+  if(!(key in uiDetailsState)) uiDetailsState[key] = false;
+  return `<details class="lb-details" data-details-key="${key}" ${uiDetailsState[key] ? 'open' : ''}>
+    <summary class="section-title">${titleHtml}</summary>
+    ${innerHtml}
+  </details>`;
+}
+
+// Which holes are Closest-to-Pin / Longest-Drive contests, per round.
+const ROUND_KP_LD_DEFAULTS = {
+  r1: { kp:[4,13], ld:[8,16] },
+  r2: { kp:[4,16], ld:[5,12] },
+  r3: { kp:[8,12], ld:[7,17] }
+};
+
+function blankHoles(n){ return Array.from({length:n}, ()=>null); }
+
+function defaultState(){
+  return {
+    name: 'CoTex 2026',
+    tournamentImageUrl: '',
+    useCourseHandicap: false, // global default: false = straight Handicap Index everywhere
+    chatEnabled: true,        // false = Chat tab hidden for everyone and chat connection stays closed
+    players: [],
+    rounds: [
+      {
+        id:'r1', label:'Round 1', course:'Twin Warriors', date:'',
+        format:'sixes', visible: true,
+        par: KNOWN_SCORECARDS['Twin Warriors'].par.slice(), hcpIndex: KNOWN_SCORECARDS['Twin Warriors'].hcpIndex.slice(),
+        rating: 69.9, slope: 133, logoUrl: '',
+        teeBox: '', firstTeeTime: '', totalYardage: '',
+        useCourseHandicap: null, // null = inherit tournament default; true/false = override for this round
+        handicapOverrides: {}, // { playerName: number } — per-round handicap adjustment, defaults to player's base handicap if unset
+        groups: [], quads: [], pairs: [], teeGroups: [],
+        kpHoles: ROUND_KP_LD_DEFAULTS.r1.kp.slice(), ldHoles: ROUND_KP_LD_DEFAULTS.r1.ld.slice()
+      },
+      {
+        id:'r2', label:'Round 2', course:'Paako Ridge', date:'',
+        format:'pairs', visible: true,
+        par: blankHoles(18), hcpIndex: blankHoles(18),
+        rating: 69.7, slope: 132, logoUrl: '',
+        teeBox: '', firstTeeTime: '', totalYardage: '',
+        useCourseHandicap: null,
+        handicapOverrides: {},
+        groups: [], quads: [], pairs: [], teeGroups: [],
+        kpHoles: ROUND_KP_LD_DEFAULTS.r2.kp.slice(), ldHoles: ROUND_KP_LD_DEFAULTS.r2.ld.slice()
+      },
+      {
+        id:'r3', label:'Round 3', course:'Sandia Resort', date:'',
+        format:'stroke', visible: true,
+        par: blankHoles(18), hcpIndex: blankHoles(18),
+        rating: 69.8, slope: 129, logoUrl: '',
+        teeBox: '', firstTeeTime: '', totalYardage: '',
+        useCourseHandicap: null,
+        handicapOverrides: {},
+        groups: [], quads: [], pairs: [], teeGroups: [],
+        kpHoles: ROUND_KP_LD_DEFAULTS.r3.kp.slice(), ldHoles: ROUND_KP_LD_DEFAULTS.r3.ld.slice()
+      }
+    ],
+    scores: {}, // key `${roundId}__${player}__${hole}` -> strokes (number)
+    kp: {},     // key `${roundId}__${player}__${hole}` -> {feet, inches}
+    ld: {}      // key `${roundId}__${player}__${hole}` -> {checked, ts}
+  };
+}
+
+// ============================================================
+// BACKEND CONFIG — edit this block to switch where data is stored.
+// All three modes use the exact same app; only this config changes.
+// ============================================================
+const BACKEND = {
+  // 'rest'     = your own self-hosted server (Docker on NAS/Mac)
+  // 'firebase' = Firebase Realtime Database (no server needed)
+  // 'sheets'   = Google Apps Script backed by a Google Sheet
+  mode: 'firebase',
+
+  // --- mode: 'rest' ---
+  // URL of your self-hosted server's state endpoint, e.g. http://192.168.1.50:3000/api/state
+  restUrl: 'http://localhost:3000/api/state',
+
+  // --- mode: 'firebase' ---
+  // Full Firebase web app config — from Firebase Console > Project settings >
+  // General > Your apps > (Web app) > SDK setup and configuration > Config.
+  firebaseConfig: {
+    apiKey: "AIzaSyBU3veZrNlHeLWu9r58ZFLm1Qj1hjq62c8",
+    authDomain: "cotex-2026.firebaseapp.com",
+    databaseURL: "https://cotex-2026-default-rtdb.firebaseio.com",
+    projectId: "cotex-2026",
+    storageBucket: "cotex-2026.firebasestorage.app",
+    messagingSenderId: "400557267107",
+    appId: "1:400557267107:web:ac9dfbdafe05cbba868716"
+  },
+
+  // --- mode: 'sheets' ---
+  // Your deployed Apps Script Web App URL (ends in /exec)
+  sheetsUrl: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec'
+};
+
+// ============================================================
+// FIREBASE SDK SETUP (real-time listener instead of REST polling)
+//
+// Using the actual Firebase SDK with a persistent WebSocket connection means
+// the browser downloads the full state once on load, then only the small
+// delta whenever something changes — instead of re-downloading the entire
+// state every few seconds via REST polling. This is the main lever for
+// staying well under the 360 MB/day free-tier download limit as more people
+// use the app during a round.
+// ============================================================
+let fbApp = null, fbDb = null, fbAuth = null;              // default app: public reads + scorer sign-in
+let fbAdminApp = null, fbAdminAuth = null;                  // second app: organizer sign-in (its database is opened on demand)
+if(BACKEND.mode === 'firebase'){
+  fbApp = firebase.initializeApp(BACKEND.firebaseConfig);
+  fbDb = fbApp.database();
+  fbAuth = fbApp.auth();
+  fbAdminApp = firebase.initializeApp(BACKEND.firebaseConfig, 'admin');
+  fbAdminAuth = fbAdminApp.auth();
+  // Organizer session lasts only until this browser tab is closed.
+  fbAdminAuth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(()=>{});
+}
+
+// ============================================================
+// SIGN-IN & WRITE ACCESS (Firebase mode only — Spark/free plan, no server needed)
+//
+// Two Firebase Authentication accounts protect the database. Their passwords
+// are set in the Firebase Console and typed into the sign-in popup by people
+// — they are never stored in this file or in the database.
+//
+//   SCORER_EMAIL  shared by everyone entering scores. The Database Rules let
+//                 it write ONLY scores, closest-to-pin and longest-drive.
+//   ADMIN_EMAIL   organizer only. The Database Rules let it write everything
+//                 (players, handicaps, rounds, settings, restore-from-backup).
+//
+// The Database Rules (database.rules.json) are the real gate. Anyone can read
+// this file, so the checks below only decide when to show the sign-in popup;
+// a visitor who skips them still cannot write anything. Reads stay public so
+// the leaderboard works without signing in.
+//
+// Two separate Firebase app instances are used so the scorer session stays
+// signed in on the device, while the organizer session ends when the browser
+// tab is closed.
+// ============================================================
+const SCORING_KEYS = ['scores','kp','ld'];
+let pendingScorerLogin = null;
+let pendingAdminLogin = null;
+
+// Resolves once Firebase has finished restoring any saved session.
+function authReady(auth){
+  return new Promise(resolve=>{
+    let done = false, unsub = null;
+    unsub = auth.onAuthStateChanged(user=>{
+      if(done) return;
+      done = true;
+      resolve(user);
+      if(unsub) unsub();
+    });
+    if(done && unsub) unsub();
+  });
+}
+
+function isSignedInAs(auth, email){
+  return !!(auth && auth.currentUser && auth.currentUser.email === email);
+}
+
+// Password popup (replaces the browser's plain-text prompt). Resolves with the
+// typed password, or null if the person cancels.
+function askPassword(title, message, errorText, email){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'auth-overlay';
+    overlay.innerHTML = `
+      <form class="auth-box" autocomplete="on">
+        <div class="auth-title">${escapeHtml(title)}</div>
+        <p class="auth-msg">${escapeHtml(message)}</p>
+        <input type="text" name="username" value="${escapeAttr(email||'')}" autocomplete="username" style="display:none" tabindex="-1" aria-hidden="true">
+        <input type="password" class="auth-input" name="password" placeholder="Password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <div class="auth-error" role="alert">${escapeHtml(errorText||'')}</div>
+        <div class="auth-actions">
+          <button type="button" class="btn secondary" data-auth-cancel>Cancel</button>
+          <button type="submit" class="btn">Sign in</button>
+        </div>
+      </form>`;
+    document.body.appendChild(overlay);
+    const form = overlay.querySelector('form');
+    const input = overlay.querySelector('.auth-input');
+    const finish = (value)=>{
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      resolve(value);
+    };
+    const onKey = (e)=>{ if(e.key === 'Escape') finish(null); };
+    document.addEventListener('keydown', onKey, true);
+    form.addEventListener('submit', (e)=>{
+      e.preventDefault();
+      if(!input.value){ input.focus(); return; }
+      finish(input.value);
+    });
+    overlay.querySelector('[data-auth-cancel]').addEventListener('click', ()=> finish(null));
+    setTimeout(()=> input.focus(), 50);
+  });
+}
+
+// Asks for the password (up to 5 tries) and signs the given account in.
+// Returns true on success, false if cancelled or out of tries.
+async function signInWithPrompt(auth, email, title, message){
+  let errorText = '';
+  for(let attempt = 0; attempt < 5; attempt++){
+    const pw = await askPassword(title, message, errorText, email);
+    if(pw === null) return false;
+    try{
+      await auth.signInWithEmailAndPassword(email, pw);
+      return true;
+    }catch(err){
+      const code = err && err.code;
+      if(code === 'auth/too-many-requests'){
+        alert('Too many failed attempts. Wait a few minutes, then try again.');
+        return false;
+      }
+      if(code === 'auth/network-request-failed') errorText = 'Network problem — check your connection and try again.';
+      else if(code === 'auth/operation-not-allowed') errorText = 'Email/password sign-in is not enabled in Firebase.';
+      else if(code === 'auth/user-disabled') errorText = 'This account has been disabled.';
+      else if(['auth/invalid-credential','auth/wrong-password','auth/invalid-login-credentials','auth/user-not-found','auth/invalid-email','auth/missing-password'].includes(code)) errorText = 'Incorrect password.';
+      else errorText = 'Sign-in failed (' + (code || 'unknown error') + ').';
+    }
+  }
+  return false;
+}
+
+// Organizer session — needed for Setup and every settings/roster change.
+async function ensureAdminSession(){
+  await authReady(fbAdminAuth);
+  if(!isSignedInAs(fbAdminAuth, ADMIN_EMAIL)){
+    if(!pendingAdminLogin){
+      pendingAdminLogin = signInWithPrompt(fbAdminAuth, ADMIN_EMAIL, 'Organizer sign-in',
+        'Enter the organizer password to open Setup and change tournament settings.')
+        .finally(()=>{ pendingAdminLogin = null; });
+    }
+    const ok = await pendingAdminLogin;
+    if(!ok) throw new Error('Organizer sign-in required.');
+  }
+  return { db: fbAdminApp.database(), auth: fbAdminAuth };
+}
+
+// Score-entry session — the shared scorer account (an organizer who is already
+// signed in may also record scores without a second password).
+async function ensureScoringSession(){
+  await Promise.all([authReady(fbAuth), authReady(fbAdminAuth)]);
+  if(isSignedInAs(fbAuth, SCORER_EMAIL)) return { db: fbDb, auth: fbAuth };
+  if(isSignedInAs(fbAdminAuth, ADMIN_EMAIL)) return { db: fbAdminApp.database(), auth: fbAdminAuth };
+  if(!pendingScorerLogin){
+    pendingScorerLogin = signInWithPrompt(fbAuth, SCORER_EMAIL, 'Score entry sign-in',
+      'Enter the scorer password to record scores.')
+      .finally(()=>{ pendingScorerLogin = null; });
+  }
+  const ok = await pendingScorerLogin;
+  if(!ok) throw new Error('Scorer sign-in required.');
+  return { db: fbDb, auth: fbAuth };
+}
+
+// Runs a write with the right session. If the database rejects it (for
+// example the password was changed and the old session is no longer accepted),
+// the stale session is signed out and the person is asked to sign in again once.
+async function withSession(getSession, doWrite){
+  for(let attempt = 0; attempt < 2; attempt++){
+    const { db, auth } = await getSession();
+    try{
+      await doWrite(db);
+      return;
+    }catch(err){
+      if(err && err.code === 'PERMISSION_DENIED' && attempt === 0){
+        try{ await auth.signOut(); }catch(_){}
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+async function backendGet(){
+  if(BACKEND.mode === 'rest'){
+    return fetchJsonOrNull(BACKEND.restUrl, {}, 'rest get');
+  }
+  if(BACKEND.mode === 'firebase'){
+    const snapshot = await fbDb.ref('tournament').once('value');
+    return snapshot.val() || null;
+  }
+  if(BACKEND.mode === 'sheets'){
+    return fetchJsonOrNull(BACKEND.sheetsUrl + '?action=get', {}, 'sheets get');
+  }
+  throw new Error('Unknown BACKEND.mode: ' + BACKEND.mode);
+}
+
+async function fetchJsonOrNull(url, options, label){
+  const res = await fetch(url, options);
+  if(!res.ok) throw new Error(label + ' failed: ' + res.status);
+  const data = await res.json();
+  return (data && Object.keys(data).length) ? data : null;
+}
+
+async function backendSet(stateObj, opts){
+  if(BACKEND.mode === 'rest'){
+    const res = await fetch(BACKEND.restUrl, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(stateObj)
+    });
+    if(!res.ok) throw new Error('rest set failed: ' + res.status);
+    return;
+  }
+  if(BACKEND.mode === 'firebase'){
+    // Organizer-only write. Normally this saves just the settings/roster/rounds
+    // fields and leaves scores, closest-to-pin and longest-drive untouched, so
+    // an organizer editing Setup can never overwrite entries other people are
+    // recording. A full restore-from-backup passes { full: true } to replace
+    // everything. (The Database Rules only allow the organizer account here.)
+    try{
+      await withSession(ensureAdminSession, async (db)=>{
+        if(opts && opts.full){
+          const all = { ...stateObj };
+          delete all._pinHash;
+          await db.ref('tournament').set(all);
+        }else{
+          const cfg = {};
+          Object.keys(stateObj).forEach(k=>{
+            if(!SCORING_KEYS.includes(k) && k !== '_pinHash') cfg[k] = stateObj[k];
+          });
+          cfg._pinHash = null; // removes the leftover field from the old PIN scheme
+          await db.ref('tournament').update(cfg);
+        }
+      });
+    }catch(e){
+      if(e && e.message === 'Organizer sign-in required.') alert('Change not saved — organizer sign-in is required.');
+      throw e;
+    }
+    return;
+  }
+  if(BACKEND.mode === 'sheets'){
+    // Apps Script web apps need text/plain to avoid a CORS preflight.
+    const res = await fetch(BACKEND.sheetsUrl, {
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'set', data: stateObj })
+    });
+    if(!res.ok) throw new Error('sheets set failed: ' + res.status);
+    return;
+  }
+  throw new Error('Unknown BACKEND.mode: ' + BACKEND.mode);
+}
+
+function blankHolesLocal18(){ return Array.from({length:18}, ()=>null); }
+
+const ROUND_RATING_SLOPE_DEFAULTS = { r1:{rating:69.9, slope:133}, r2:{rating:69.7, slope:132}, r3:{rating:69.8, slope:129} };
+
+// --- Game settings (per round). Editable in Setup; defaults match the agreed rules. ---
+const GAME_LABELS = { trad6:'Traditional Sixes', shamble:'Shamble', bbb:'Bingo Bango Bongo', stableford:'Stableford' };
+function defaultGameSettings(){
+  return {
+    shambleSize: 2,           // players per shamble team (2, 3 or 4)
+    shamblePct: 100,          // % of each player's handicap used (net)
+    bbbPoints: { green:1, closest:1, first:1 },   // Bingo / Bango / Bongo points per hole (no point on a tie or blank)
+    stablefordPct: 100,       // % of each player's handicap used (net)
+    stablefordPoints: { albatross:5, eagle:4, birdie:3, par:2, bogey:1, double:0 }
+  };
+}
+function mergeGameSettings(gs){
+  const d = defaultGameSettings();
+  const g = (gs && typeof gs === 'object') ? gs : {};
+  return {
+    ...d, ...g,
+    bbbPoints: { ...d.bbbPoints, ...(g.bbbPoints || {}) },
+    stablefordPoints: { ...d.stablefordPoints, ...(g.stablefordPoints || {}) }
+  };
+}
+
+function normalizeState(s){
+  if(!s || typeof s !== 'object') return defaultState();
+  if(!Array.isArray(s.players)) s.players = [];
+  s.players = s.players.map(p=>({
+    name: (p && p.name) || 'Player',
+    handicap: (p && Number(p.handicap)) || 0
+  }));
+  if(!Array.isArray(s.rounds)) s.rounds = defaultState().rounds;
+  s.rounds = s.rounds.map(r=>({
+    id: r.id,
+    label: r.label || r.id,
+    course: r.course || '',
+    date: r.date || '',
+    format: r.format || 'stroke',
+    visible: r.visible !== false,
+    rating: (r.rating !== undefined && r.rating !== null && r.rating !== '') ? Number(r.rating) : ((ROUND_RATING_SLOPE_DEFAULTS[r.id] && ROUND_RATING_SLOPE_DEFAULTS[r.id].rating) || null),
+    slope: (r.slope !== undefined && r.slope !== null && r.slope !== '') ? Number(r.slope) : ((ROUND_RATING_SLOPE_DEFAULTS[r.id] && ROUND_RATING_SLOPE_DEFAULTS[r.id].slope) || null),
+    par: Array.isArray(r.par) && r.par.length===18 ? r.par : blankHolesLocal18(),
+    hcpIndex: Array.isArray(r.hcpIndex) && r.hcpIndex.length===18 ? r.hcpIndex : blankHolesLocal18(),
+    groups: Array.isArray(r.groups) ? r.groups : [],
+    quads: Array.isArray(r.quads) ? r.quads : [],
+    pairs: Array.isArray(r.pairs) ? r.pairs.map(p=>({
+      id: (p && p.id) || ('pair-' + Math.random().toString(36).slice(2)),
+      players: (p && Array.isArray(p.players)) ? p.players : ['',''],
+      adjustment: (p && p.adjustment !== undefined && p.adjustment !== null && p.adjustment !== '') ? (Math.trunc(Number(p.adjustment)) || 0) : 0
+    })) : [],
+    teeGroups: Array.isArray(r.teeGroups) ? r.teeGroups : [],
+    kpHoles: Array.isArray(r.kpHoles) ? r.kpHoles : ((ROUND_KP_LD_DEFAULTS[r.id] && ROUND_KP_LD_DEFAULTS[r.id].kp.slice()) || []),
+    ldHoles: Array.isArray(r.ldHoles) ? r.ldHoles : ((ROUND_KP_LD_DEFAULTS[r.id] && ROUND_KP_LD_DEFAULTS[r.id].ld.slice()) || []),
+    logoUrl: r.logoUrl || '',
+    teeBox: r.teeBox || '',
+    firstTeeTime: r.firstTeeTime || '',
+    totalYardage: r.totalYardage || '',
+    useCourseHandicap: (r.useCourseHandicap === true || r.useCourseHandicap === false) ? r.useCourseHandicap : null,
+    handicapOverrides: (r.handicapOverrides && typeof r.handicapOverrides === 'object') ? r.handicapOverrides : {},
+    gameSettings: mergeGameSettings(r.gameSettings),
+    shambleTeams: Array.isArray(r.shambleTeams) ? r.shambleTeams.map(t=>({
+      id: (t && t.id) || ('st-' + Math.random().toString(36).slice(2)),
+      players: (t && Array.isArray(t.players)) ? t.players : []
+    })) : []
+  }));
+  if(!s.scores || typeof s.scores !== 'object') s.scores = {};
+  if(!s.kp || typeof s.kp !== 'object') s.kp = {};
+  if(!s.ld || typeof s.ld !== 'object') s.ld = {};
+  if(!s.bbb || typeof s.bbb !== 'object') s.bbb = {};
+  if(typeof s.useCourseHandicap !== 'boolean') s.useCourseHandicap = false;
+  s.chatEnabled = s.chatEnabled !== false; // missing/undefined = ON
+  if(!s.name) s.name = 'Golf Tournament';
+  if(!s.tournamentImageUrl) s.tournamentImageUrl = '';
+  delete s._pinHash; // leftover from the old PIN scheme; never app data
+  return s;
+}
+
+async function loadState(){
+  if(BACKEND.mode === 'firebase'){
+    // Real-time listener: fires immediately with current data, then again
+    // only when something actually changes — no repeated polling needed.
+    return new Promise((resolve)=>{
+      let seeded = false, firstLoad = true;
+      fbDb.ref('tournament').on('value', async (snapshot)=>{
+        // Avoid clobbering in-progress typing: while the user is on Setup or
+        // Enter, those screens manage their own targeted reads/writes
+        // (see debounceMergeSave), so skip applying a full-state refresh here.
+        if(!firstLoad && (currentTab === 'setup' || currentTab === 'enter')){
+          // Full refresh is skipped here, but still honour the organizer's chat on/off switch.
+          if(currentTab === 'enter'){ const d = snapshot.val(); chatApplyEnabled(!d || d.chatEnabled !== false); }
+          return;
+        }
+        const data = snapshot.val();
+        state = normalizeState(data);
+        // If the database is empty, defaults are shown locally; the first
+        // organizer save in Setup writes them (visitors can't write).
+        if(!entrySel.player && state.players.length) entrySel.player = state.players[0].name;
+        render();
+        if(firstLoad){ firstLoad = false; resolve(); }
+      }, (err)=>{ console.error('firebase listener error', err); resolve(); });
+    });
+  }
+  try{
+    const data = await backendGet();
+    state = normalizeState(data);
+    if(!data) await saveState();
+  }catch(e){
+    console.error('load failed', e);
+    state = defaultState();
+    try{ await saveState(); }catch(e2){ console.error('initial save failed', e2); }
+  }
+  if(!entrySel.player && state.players.length) entrySel.player = state.players[0].name;
+  render();
+}
+
+async function saveState(opts){
+  try{
+    await backendSet(state, opts);
+  }catch(e){
+    console.error('save failed', e);
+    // The write was rejected (e.g. sign-in cancelled). Whatever change was
+    // made to `state` in memory never actually reached the database, so pull
+    // the real server state back down and re-render — otherwise the failed
+    // edit keeps showing locally until the next unrelated page refresh.
+    try{
+      const serverState = await backendGet();
+      state = normalizeState(serverState);
+      render();
+    }catch(e2){ /* if this also fails, we'll self-correct on the next successful sync */ }
+    throw e; // let the caller know the save didn't happen (e.g. to show its own "Failed" status)
+  }
+}
+
+function getRound(id){ return state.rounds.find(r=>r.id===id); }
+function sortedPlayers(){ return [...state.players].sort((a,b)=>a.name.localeCompare(b.name)); }
+function scoreKey(roundId, player, hole){ return `${roundId}__${player}__${hole}`; }
+function kpKey(roundId, player, hole){ return `${roundId}__${player}__${hole}`; }
+function ldKey(roundId, player, hole){ return `${roundId}__${player}__${hole}`; }
+function getScore(roundId, player, hole){
+  const v = state.scores[scoreKey(roundId, player, hole)];
+  return (v===undefined || v===null || v==='') ? null : Number(v);
+}
+
+// --- Handicap strokes received on a given hole, based on hole's stroke index (1=hardest) ---
+function strokesReceived(handicap, hcpIndexOfHole){
+  if(!handicap || handicap <= 0 || !hcpIndexOfHole) return 0;
+  const h = Math.round(handicap);
+  const base = Math.floor(h/18);
+  const remainder = h % 18;
+  return base + (hcpIndexOfHole <= remainder ? 1 : 0);
+}
+
+// Converts a Handicap Index into a Course Handicap for a specific round,
+// using the standard formula: Index × (Slope / 113) + (Rating − Par).
+// Falls back to the index as-is if rating/slope/par aren't fully set up yet.
+function courseHandicap(round, handicapIndex){
+  const idx = Number(handicapIndex) || 0;
+  const rating = Number(round.rating);
+  const slope = Number(round.slope);
+  const par = round.par && round.par.length ? round.par.reduce((a,b)=>a+(Number(b)||0),0) : 0;
+  if(!rating || !slope || !par) return idx;
+  return Math.round(idx * (slope/113) + (rating - par));
+}
+
+// Whether this round should use Course Handicap: round-level setting wins if explicitly
+// set (true/false); otherwise falls back to the tournament-wide default.
+function roundUsesCourseHandicap(round){
+  if(round.useCourseHandicap === true) return true;
+  if(round.useCourseHandicap === false) return false;
+  return !!state.useCourseHandicap;
+}
+
+// A player's handicap for a specific round: uses that round's override if set,
+// otherwise falls back to the player's base handicap from Setup.
+function effectiveHandicapIndex(round, playerName){
+  const override = round.handicapOverrides ? round.handicapOverrides[playerName] : undefined;
+  if(override !== undefined && override !== null && override !== '') return Number(override);
+  const p = state.players.find(pl=>pl.name===playerName);
+  return p ? Number(p.handicap)||0 : 0;
+}
+
+// The actual number of strokes applied for a player in a round, after resolving
+// per-round handicap overrides and the Course Handicap toggle.
+function playerRoundHandicap(round, playerName){
+  const idx = effectiveHandicapIndex(round, playerName);
+  return roundUsesCourseHandicap(round) ? courseHandicap(round, idx) : idx;
+}
+
+function roundGrossTotal(roundId, player){
+  const round = getRound(roundId);
+  let total=0, count=0, parSum=0, parCount=0;
+  for(let h=1; h<=18; h++){
+    const v = getScore(roundId, player, h);
+    if(v!==null){
+      total+=v; count++;
+      const par = round.par[h-1];
+      if(par!==null && par!==undefined && par!==''){ parSum += Number(par); parCount++; }
+    }
+  }
+  const toPar = (count>0 && parCount===count) ? total - parSum : null;
+  return {total, count, toPar};
+}
+
+function roundNetTotal(roundId, player){
+  const round = getRound(roundId);
+  const hcp = playerRoundHandicap(round, player);
+  let total=0, count=0, parSum=0, parCount=0;
+  for(let h=1; h<=18; h++){
+    const v = getScore(roundId, player, h);
+    if(v!==null){
+      const hi = round.hcpIndex[h-1];
+      total += v - strokesReceived(hcp, hi ? Number(hi) : null);
+      count++;
+      const par = round.par[h-1];
+      if(par!==null && par!==undefined && par!==''){ parSum += Number(par); parCount++; }
+    }
+  }
+  const toPar = (count>0 && parCount===count) ? total - parSum : null;
+  return {total, count, toPar};
+}
+
+// --- Individual Sixes: rotating 1-on-1 net-score matchups within a foursome ---
+// partnerOrder[segment] = which slot (1,2,or3) pairs with slot 0 during that 6-hole segment.
+// The other two slots automatically pair with each other.
+function quadPairsForSegment(quad, segIdx){
+  const partnerSlot = quad.partnerOrder[segIdx];
+  const otherSlots = [1,2,3].filter(s=>s!==partnerSlot);
+  return [
+    [quad.players[0], quad.players[partnerSlot]],
+    [quad.players[otherSlots[0]], quad.players[otherSlots[1]]]
+  ];
+}
+
+function netHoleScore(round, player, hole){
+  const gross = getScore(round.id, player, hole);
+  if(gross===null) return null;
+  const hcp = playerRoundHandicap(round, player);
+  const hi = round.hcpIndex[hole-1];
+  return gross - strokesReceived(hcp, hi ? Number(hi) : null);
+}
+
+function sixesTotalsForRound(roundId){
+  const round = getRound(roundId);
+  const totals = {};
+  state.players.forEach(p=>totals[p.name]=0);
+  (round.quads||[]).forEach(quad=>{
+    if(quad.players.filter(Boolean).length !== 4) return;
+    for(let seg=0; seg<3; seg++){
+      const pairs = quadPairsForSegment(quad, seg);
+      const holeStart = seg*6+1, holeEnd = seg*6+6;
+      for(let h=holeStart; h<=holeEnd; h++){
+        pairs.forEach(([pa,pb])=>{
+          if(!pa || !pb) return;
+          const sa = netHoleScore(round, pa, h), sb = netHoleScore(round, pb, h);
+          if(sa===null || sb===null) return;
+          if(sa < sb) totals[pa] = (totals[pa]||0) + 2;
+          else if(sb < sa) totals[pb] = (totals[pb]||0) + 2;
+          else { totals[pa] = (totals[pa]||0) + 1; totals[pb] = (totals[pb]||0) + 1; }
+        });
+      }
+    }
+  });
+  return totals;
+}
+
+// --- Team Pairs: best-ball gross + best-ball net, per hole, summed over the round ---
+function pairsTotalsForRound(roundId){
+  const round = getRound(roundId);
+  const results = [];
+  (round.pairs||[]).forEach((pair, pi)=>{
+    if(pair.players.filter(Boolean).length !== 2) return;
+    const [a,b] = pair.players;
+    const adjustment = Math.trunc(Number(pair.adjustment)) || 0;
+    let total = 0, count = 0;
+    for(let h=1; h<=18; h++){
+      const ga = getScore(round.id, a, h), gb = getScore(round.id, b, h);
+      if(ga===null || gb===null) continue;
+      const na = netHoleScore(round, a, h), nb = netHoleScore(round, b, h);
+      if(na===null || nb===null) continue;
+      total += Math.min(ga, gb) + Math.min(na, nb);
+      count++;
+    }
+    total += adjustment;
+    results.push({ id: pair.id || `pair-${pi}`, label: `${a} & ${b}`, total, count, adjustment });
+  });
+  return results;
+}
+
+// ---------- New games ----------
+function gsNum(round, key, def){
+  const v = round.gameSettings ? round.gameSettings[key] : undefined;
+  return (v===undefined || v===null || v==='') ? def : Number(v);
+}
+
+// Net score on a hole using a percentage of the player's handicap (Shamble, Stableford).
+function netScorePct(round, player, hole, pct){
+  const gross = getScore(round.id, player, hole);
+  if(gross===null) return null;
+  const hcp = Math.round(playerRoundHandicap(round, player) * (pct/100));
+  const hi = round.hcpIndex[hole-1];
+  return gross - strokesReceived(hcp, hi ? Number(hi) : null);
+}
+
+function fmtPts(n){
+  const r = Math.round(n*2)/2;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+// Traditional Sixes: round robin. Within each foursome, the three 6-hole segments
+// use rotating partners (same schedule as Individual Sixes), so everyone partners
+// everyone once. Each segment is a 2-vs-2 best-ball net match: win = 1, tie = 0.5.
+function trad6Totals(roundId){
+  const round = getRound(roundId);
+  const out = {};
+  state.players.forEach(p=>out[p.name] = { pts:0, matches:0 });
+  const award = (name, pts)=>{ if(out[name]){ out[name].pts += pts; out[name].matches++; } };
+  (round.quads||[]).forEach(quad=>{
+    if(quad.players.filter(Boolean).length !== 4) return;
+    for(let seg=0; seg<3; seg++){
+      const [[a1,a2],[b1,b2]] = quadPairsForSegment(quad, seg);
+      let winsA=0, winsB=0, done=0;
+      for(let h=seg*6+1; h<=seg*6+6; h++){
+        const v = [a1,a2,b1,b2].map(p=>netHoleScore(round, p, h));
+        if(v.some(x=>x===null)) continue;
+        const ta = Math.min(v[0], v[1]), tb = Math.min(v[2], v[3]);
+        if(ta<tb) winsA++; else if(tb<ta) winsB++;
+        done++;
+      }
+      if(done<6) continue;   // match counts once all six holes are in
+      const ptsA = winsA>winsB ? 1 : (winsA<winsB ? 0 : 0.5);
+      [a1,a2].forEach(p=>award(p, ptsA));
+      [b1,b2].forEach(p=>award(p, 1-ptsA));
+    }
+  });
+  return out;
+}
+
+// Shamble: each team's score on a hole is the best (lowest) net of its members.
+// A hole counts once every team member has a score on it.
+function shambleTotals(roundId){
+  const round = getRound(roundId);
+  const size = gsNum(round, 'shambleSize', 2);
+  const pct = gsNum(round, 'shamblePct', 100);
+  const out = [];
+  (round.shambleTeams||[]).forEach(t=>{
+    const members = (t.players||[]).slice(0, size);
+    if(members.length !== size || !members.every(Boolean)) return;
+    let total=0, count=0, parSum=0, parOk=true;
+    for(let h=1; h<=18; h++){
+      const nets = members.map(p=>netScorePct(round, p, h, pct));
+      if(nets.some(v=>v===null)) continue;
+      total += Math.min(...nets); count++;
+      const par = round.par[h-1];
+      if(par===null || par===undefined || par==='') parOk=false; else parSum += Number(par);
+    }
+    out.push({ label: members.join(' & '), total, count, toPar: (count>0 && parOk) ? total-parSum : null });
+  });
+  return out;
+}
+
+// Bingo Bango Bongo: per hole, pick who was first on the green (Bingo), closest
+// to the pin once all are on (Bango) and first in the hole (Bongo).
+function bbbTotals(roundId){
+  const round = getRound(roundId);
+  const pts = round.gameSettings.bbbPoints;
+  const out = {};
+  state.players.forEach(p=>out[p.name] = { pts:0, holes:0 });
+  for(let h=1; h<=18; h++){
+    const rec = state.bbb[`${roundId}__${h}`] || {};
+    ['green','closest','first'].forEach(f=>{
+      if(rec[f] && out[rec[f]]) out[rec[f]].pts += Number(pts[f]) || 0;
+    });
+    if(rec.green || rec.closest || rec.first){
+      ['green','closest','first'].forEach(f=>{ if(rec[f] && out[rec[f]]) out[rec[f]].holes = (out[rec[f]].holes||0); });
+    }
+  }
+  return out;
+}
+
+// Stableford: points per hole from the net score relative to par.
+function stablefordPointsFor(rel, table){
+  if(rel <= -3) return table.albatross;
+  if(rel === -2) return table.eagle;
+  if(rel === -1) return table.birdie;
+  if(rel === 0) return table.par;
+  if(rel === 1) return table.bogey;
+  return table.double;
+}
+function stablefordTotals(roundId){
+  const round = getRound(roundId);
+  const pct = gsNum(round, 'stablefordPct', 100);
+  const table = round.gameSettings.stablefordPoints;
+  return state.players.map(p=>{
+    let pts=0, count=0;
+    for(let h=1; h<=18; h++){
+      const net = netScorePct(round, p.name, h, pct);
+      const par = round.par[h-1];
+      if(net===null || par===null || par===undefined || par==='') continue;
+      pts += Number(stablefordPointsFor(net - Number(par), table)) || 0;
+      count++;
+    }
+    return { name:p.name, pts, count };
+  });
+}
+
+// Board shown under Gross and Net for a round whose format is one of the new games.
+function gameBoardHtml(round){
+  if(!GAME_LABELS[round.format]) return '';
+  const title = `${escapeHtml(round.label)} — ${GAME_LABELS[round.format]}`;
+  let body = '';
+
+  if(round.format==='trad6'){
+    const t = trad6Totals(round.id);
+    const rows = state.players.map(p=>({ name:p.name, pts:t[p.name].pts, m:t[p.name].matches }))
+      .sort((a,b)=> (a.m===0)-(b.m===0) || b.pts-a.pts);
+    const hasQuads = (round.quads||[]).some(q=>q.players.filter(Boolean).length===4);
+    body = hasQuads ? `<div class="card">${rows.map((r,i)=>`
+        <div class="lb-row">
+          <span class="lb-rank">${r.m===0?'–':i+1}</span>
+          <span class="lb-name">${escapeHtml(r.name)}<span class="hcp">${r.m} ${r.m===1?'match':'matches'}</span></span>
+          <span class="lb-score ${r.m===0?'dim':''}">${fmtPts(r.pts)}</span>
+        </div>`).join('')}</div>
+        <p class="muted">Each 6-hole segment is a 2-vs-2 best-ball net match. Win = 1 point, tie = ½. A match counts once all six holes are entered.</p>`
+      : `<div class="muted">Set up your foursomes for this round in Setup to see points.</div>`;
+  }
+
+  if(round.format==='shamble'){
+    const teams = shambleTotals(round.id).sort((a,b)=> (a.count===0)-(b.count===0) || a.total-b.total);
+    body = teams.length ? `<div class="card">${teams.map((r,i)=>`
+        <div class="lb-row">
+          <span class="lb-rank">${r.count===0?'–':i+1}</span>
+          <span class="lb-name">${escapeHtml(r.label)}</span>
+          ${scoreCellHtml(r.count, r.total, r.toPar)}
+        </div>`).join('')}</div>
+        <p class="muted">Team score = best net of the team on each hole, using ${gsNum(round,'shamblePct',100)}% of handicap. Lowest total wins.</p>`
+      : `<div class="muted">Set up your shamble teams for this round in Setup to see scores.</div>`;
+  }
+
+  if(round.format==='bbb'){
+    const t = bbbTotals(round.id);
+    const rows = state.players.map(p=>({ name:p.name, pts:t[p.name].pts }))
+      .sort((a,b)=> b.pts-a.pts);
+    const pts = round.gameSettings.bbbPoints;
+    body = `<div class="card">${rows.map((r,i)=>`
+        <div class="lb-row">
+          <span class="lb-rank">${i+1}</span>
+          <span class="lb-name">${escapeHtml(r.name)}</span>
+          <span class="lb-score ${r.pts===0?'dim':''}">${r.pts}</span>
+        </div>`).join('')}</div>
+      <p class="muted">Points: Bingo ${pts.green}, Bango ${pts.closest}, Bongo ${pts.first}. Ties and blank picks score no point. Picks are entered under Enter Scores → By Hole.</p>`;
+  }
+
+  if(round.format==='stableford'){
+    const rows = stablefordTotals(round.id).sort((a,b)=> (a.count===0)-(b.count===0) || b.pts-a.pts);
+    body = `<div class="card">${rows.map((r,i)=>`
+        <div class="lb-row">
+          <span class="lb-rank">${r.count===0?'–':i+1}</span>
+          <span class="lb-name">${escapeHtml(r.name)}</span>
+          <span class="lb-score ${r.count===0?'dim':''}">${r.count===0?'—':r.pts}</span>
+        </div>`).join('')}</div>
+      <p class="muted">Net score (${gsNum(round,'stablefordPct',100)}% of handicap) against par. Highest points wins.</p>`;
+  }
+
+  return lbSection(`round-${round.id}-game`, title, body);
+}
+
+function render(){
+  document.getElementById('tournamentName').textContent = state.name;
+  const roundsInfo = state.rounds.map(r=>r.course).join(' · ');
+  document.getElementById('headerSub').textContent = `${state.players.length} players · ${roundsInfo}`;
+  const imgEl = document.getElementById('tournamentImage');
+  if(state.tournamentImageUrl){
+    imgEl.src = state.tournamentImageUrl;
+    imgEl.alt = state.name;
+    imgEl.style.display = 'block';
+  } else {
+    imgEl.style.display = 'none';
+  }
+  const chatOn = state.chatEnabled !== false;
+  if(!chatOn && currentTab === 'chat') currentTab = 'leaderboard'; // chat was switched off while open
+  chatApplyEnabled(chatOn);
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===currentTab));
+  const main = document.getElementById('main');
+  if(currentTab==='chat'){
+    // Chat is built once and then updated in place, so live leaderboard
+    // refreshes never wipe a half-typed message or scroll position.
+    if(!document.getElementById('chatRoot')) mountChat(main);
+  }
+  else if(currentTab==='leaderboard') main.innerHTML = renderLeaderboard();
+  else if(currentTab==='enter') main.innerHTML = renderEnter();
+  else main.innerHTML = renderSetup();
+  attachHandlers();
+}
+
+function fmtSigned(n){
+  if(n>0) return `+${n}`;
+  if(n===0) return 'E';
+  return `${n}`;
+}
+
+function scoreCellHtml(count, total, toPar){
+  if(count===0) return `<span class="lb-score-wrap"><span class="lb-score dim">—</span></span>`;
+  const toParHtml = toPar!==null && toPar!==undefined
+    ? `<span class="lb-topar ${toPar<0?'under':toPar>0?'over':'even'}">(${fmtSigned(toPar)})</span>`
+    : '';
+  const thruHtml = `<span class="lb-thru">${count>=18 ? 'F' : `Thru ${count}`}</span>`;
+  return `<span class="lb-score-wrap"><span class="lb-score">${total}</span>${toParHtml}${thruHtml}</span>`;
+}
+
+function renderLeaderboard(){
+  const visRounds = state.rounds.filter(r=>r.visible!==false);
+  const tabs = `<div class="toplevel-tabs">
+    <button data-lb="overall" class="${lbView==='overall'?'active':''}">OVERALL</button>
+    ${visRounds.map(r=>`<button data-lb="${r.id}" class="${lbView===r.id?'active':''}">${r.label.toUpperCase()}</button>`).join('')}
+  </div>`;
+
+  if(!state.players.length) return tabs + `<div class="empty-state">No players yet. Add players in Setup.</div>`;
+
+  if(lbView!=='overall' && !visRounds.some(r=>r.id===lbView)){
+    lbView = 'overall';
+  }
+
+  if(lbView==='overall'){
+    const gross = state.players.map(p=>{
+      let total=0, count=0, parSum=0, anyMissingPar=false;
+      visRounds.forEach(r=>{
+        const {total:t, count:c, toPar} = roundGrossTotal(r.id, p.name);
+        total+=t; count+=c;
+        if(c>0){ if(toPar===null) anyMissingPar=true; else parSum+=toPar; }
+      });
+      return {name:p.name, total, count, toPar: (count>0 && !anyMissingPar) ? parSum : null};
+    }).sort((a,b)=> (a.count===0)-(b.count===0) || a.total-b.total);
+
+    const net = state.players.map(p=>{
+      let total=0, count=0, parSum=0, anyMissingPar=false;
+      visRounds.forEach(r=>{
+        const {total:t, count:c, toPar} = roundNetTotal(r.id, p.name);
+        total+=t; count+=c;
+        if(c>0){ if(toPar===null) anyMissingPar=true; else parSum+=toPar; }
+      });
+      return {name:p.name, total, count, toPar: (count>0 && !anyMissingPar) ? parSum : null};
+    }).sort((a,b)=> (a.count===0)-(b.count===0) || a.total-b.total);
+
+    return tabs + `
+      ${lbSection('overall-gross', 'Overall — Gross', `
+        <div class="card">${gross.map((r,i)=>`
+          <div class="lb-row">
+            <span class="lb-rank">${r.count===0?'–':i+1}</span>
+            <span class="lb-name">${escapeHtml(r.name)}</span>
+            ${scoreCellHtml(r.count, r.total, r.toPar)}
+          </div>`).join('')}
+        </div>`)}
+      ${lbSection('overall-net', 'Overall — Net', `
+        <div class="card">${net.map((r,i)=>`
+          <div class="lb-row">
+            <span class="lb-rank">${r.count===0?'–':i+1}</span>
+            <span class="lb-name">${escapeHtml(r.name)}</span>
+            ${scoreCellHtml(r.count, r.total, r.toPar)}
+          </div>`).join('')}
+        </div>
+        <p class="muted">Net = gross minus handicap strokes allocated per hole. To-par shows once par is entered for every hole played, in Setup.</p>`)}
+      ${lbSection('overall-handicaps', 'Handicaps', `
+        <div class="card">${[...state.players].sort((a,b)=> (Number(a.handicap)||0) - (Number(b.handicap)||0)).map((p,i)=>`
+          <div class="lb-row">
+            <span class="lb-rank">${i+1}</span>
+            <span class="lb-name">${escapeHtml(p.name)}</span>
+            <span class="lb-score">${Number(p.handicap)||0}</span>
+          </div>`).join('')}
+        </div>`)}
+    `;
+  } else {
+    const round = getRound(lbView);
+    const gross = state.players.map(p=>{
+      const {total,count,toPar} = roundGrossTotal(round.id, p.name);
+      return {name:p.name, total, count, toPar};
+    }).sort((a,b)=> (a.count===0)-(b.count===0) || a.total-b.total);
+    const net = state.players.map(p=>{
+      const {total,count,toPar} = roundNetTotal(round.id, p.name);
+      return {name:p.name, total, count, toPar};
+    }).sort((a,b)=> (a.count===0)-(b.count===0) || a.total-b.total);
+
+    let sixesHtml = '';
+    if(round.format==='sixes'){
+      const totals = sixesTotalsForRound(round.id);
+      const rows = state.players.map(p=>({name:p.name, pts: totals[p.name]||0}))
+        .sort((a,b)=>b.pts-a.pts);
+      const hasGroups = (round.quads||[]).some(q=>q.players.filter(Boolean).length===4);
+
+      const validQuads = (round.quads||[]).filter(q=>q.players.filter(Boolean).length===4);
+      const groupsHtml = lbSection(`round-${round.id}-sixes-groups`, `${escapeHtml(round.label)} — Individual Sixes Points · Groups`, `
+        <p class="muted" style="margin:-6px 0 12px;">(note: <strong>GROSS</strong> score will be used as a tie breaker)</p>
+        ${validQuads.length ? validQuads.map((quad, qi)=>{
+          const groupRows = quad.players.filter(Boolean).map(name=>{
+            const {total:grossTotal, count:grossCount} = roundGrossTotal(round.id, name);
+            return { name, pts: totals[name]||0, grossTotal, grossCount };
+          }).sort((a,b)=>{
+            if(b.pts !== a.pts) return b.pts - a.pts;
+            const aHas = a.grossCount>0, bHas = b.grossCount>0;
+            if(aHas !== bHas) return aHas ? -1 : 1;
+            return a.grossTotal - b.grossTotal;
+          });
+          return `
+          <div class="group-lb-block" style="margin-bottom:14px;">
+            <div class="muted" style="font-family:'Oswald',sans-serif; letter-spacing:0.04em; font-size:12px; text-transform:uppercase; margin:0 0 6px;">Group ${qi+1}</div>
+            <div class="card">
+              ${groupRows.map((r,i)=>`
+                <div class="lb-row">
+                  <span class="lb-rank">${i+1}</span>
+                  <span class="lb-name">${escapeHtml(r.name)}</span>
+                  <span class="lb-score">${r.pts}</span>
+                </div>`).join('')}
+            </div>
+          </div>`;
+        }).join('') : `<div class="card"><div class="muted">Set up your foursomes for this round in Setup to see points.</div></div>`}`);
+
+      const pointsHtml = lbSection(`round-${round.id}-sixes-points`, `${escapeHtml(round.label)} — Individual Sixes Points`, `
+        <p class="muted" style="margin:-6px 0 12px;">(note: <strong>GROSS</strong> score will be used as a tie breaker)</p>
+        <div class="card">
+        ${hasGroups ? rows.map((r,i)=>`
+          <div class="lb-row">
+            <span class="lb-rank">${i+1}</span>
+            <span class="lb-name">${escapeHtml(r.name)}</span>
+            <span class="lb-score">${r.pts}</span>
+          </div>`).join('') : `<div class="muted">Set up your foursomes for this round in Setup to see points.</div>`}
+        </div>`);
+
+      sixesHtml = `${groupsHtml}${pointsHtml}`;
+    }
+
+    let pairsHtml = '';
+    if(round.format==='pairs'){
+      const teamResults = pairsTotalsForRound(round.id)
+        .sort((a,b)=> (a.count===0)-(b.count===0) || a.total-b.total);
+      const hasPairs = (round.pairs||[]).some(p=>p.players.filter(Boolean).length===2);
+      pairsHtml = lbSection(`round-${round.id}-pairs`, `${escapeHtml(round.label)} — Team Score (Best Ball Gross + Net)`, `
+        <div class="card">
+        ${hasPairs ? teamResults.map((r,i)=>`
+          <div class="lb-row">
+            <span class="lb-rank">${r.count===0?'–':i+1}</span>
+            <span class="lb-name">${escapeHtml(r.label)}${r.adjustment ? ` <span class="hcp">(${r.adjustment>0?'+':''}${r.adjustment} adj)</span>` : ''}</span>
+            <span class="lb-score ${r.count===0?'dim':''}">${r.count===0?'—':r.total}</span>
+          </div>`).join('') : `<div class="muted">Set up your pairs for this round in Setup to see team scores.</div>`}
+        </div>
+        <p class="muted">Each hole: lower of the pair's two gross scores, plus lower of their two net scores, summed over 18, plus any manual adjustment set in Setup — lowest total wins.</p>`);
+    }
+
+    const kpByHole = (round.kpHoles||[]).map(hole=>{
+      const entries = state.players.map(p=>{
+        const e = state.kp[kpKey(round.id, p.name, hole)];
+        if(!e) return null;
+        const feet = (e.feet===null || e.feet===undefined || e.feet==='') ? null : Number(e.feet);
+        const inches = (e.inches===null || e.inches===undefined || e.inches==='') ? null : Number(e.inches);
+        if(feet===null && inches===null) return null;
+        return { player: p.name, feet: feet||0, inches: inches||0, total: (feet||0)*12 + (inches||0) };
+      }).filter(Boolean).sort((a,b)=>a.total-b.total);
+      return { hole, entries };
+    });
+    const ldByHole = (round.ldHoles||[]).map(hole=>{
+      const entries = state.players.map(p=>{
+        const e = state.ld[ldKey(round.id, p.name, hole)];
+        if(!e || !e.checked) return null;
+        return { player: p.name, ts: e.ts||0 };
+      }).filter(Boolean).sort((a,b)=>b.ts-a.ts); // most recently checked first (treated as current winner)
+      return { hole, entries };
+    });
+    const hasKpLd = (round.kpHoles||[]).length > 0 || (round.ldHoles||[]).length > 0;
+    let kpLdHtml = '';
+    if(hasKpLd){
+      kpLdHtml = lbSection(`round-${round.id}-kpld`, 'Daily KP and LD', `
+        ${ldByHole.map(({hole, entries})=>`
+          <div class="card kp-ld-card">
+            <div class="kp-ld-row">
+              <span class="kp-ld-label">LONGEST DRIVE — HOLE ${hole}</span>
+              <span class="kp-ld-value">${entries.length ? escapeHtml(entries[0].player) : '<span class="muted">No entries yet</span>'}</span>
+            </div>
+          </div>`).join('')}
+        ${kpByHole.map(({hole, entries})=>`
+          <div class="card">
+            <div class="kp-ld-label" style="margin-bottom:8px;">CLOSEST TO PIN — HOLE ${hole}</div>
+            ${entries.length ? entries.map((e,i)=>`
+              <div class="lb-row">
+                <span class="lb-rank">${i+1}</span>
+                <span class="lb-name">${escapeHtml(e.player)}</span>
+                <span class="lb-score">${e.feet}' ${e.inches}"</span>
+              </div>`).join('') : `<div class="muted">No entries yet</div>`}
+          </div>`).join('')}`);
+    }
+
+    const logoHtml = round.logoUrl
+      ? `<div style="text-align:center; margin-bottom:16px;"><img src="${escapeAttr(round.logoUrl)}" alt="${escapeAttr(round.course)}" style="max-height:90px; max-width:100%; border-radius:6px;"></div>`
+      : '';
+
+    const roundInfoParts = [];
+    if(round.course) roundInfoParts.push(escapeHtml(round.course));
+    if(round.teeBox) roundInfoParts.push(`${escapeHtml(round.teeBox)} tees`);
+    if(round.totalYardage) roundInfoParts.push(`${escapeHtml(round.totalYardage)} yds`);
+    if(round.rating !== null && round.rating !== undefined && round.slope !== null && round.slope !== undefined){
+      roundInfoParts.push(`${round.rating}/${round.slope}`);
+    }
+    const roundInfoLine1 = roundInfoParts.join(' · ');
+    const roundInfoLine2 = round.firstTeeTime ? `First tee: ${escapeHtml(round.firstTeeTime)}` : '';
+    const roundInfoHtml = (roundInfoLine1 || roundInfoLine2)
+      ? `<p style="text-align:center; margin:-6px 0 14px; font-size:1.05rem; font-weight:600; color:#ffffff;">
+          ${roundInfoLine1}${roundInfoLine1 && roundInfoLine2 ? '<br>' : ''}${roundInfoLine2}
+        </p>`
+      : '';
+
+    const gameHtml = gameBoardHtml(round);
+    return tabs + `
+      ${logoHtml}
+      ${roundInfoHtml}
+      ${kpLdHtml}
+      ${pairsHtml}
+      ${sixesHtml}
+      ${lbSection(`round-${round.id}-gross`, `${escapeHtml(round.label)} — ${escapeHtml(round.course)} · Gross`, `
+        <div class="card">${gross.map((r,i)=>`
+          <div class="lb-row">
+            <span class="lb-rank">${r.count===0?'–':i+1}</span>
+            <span class="lb-name">${escapeHtml(r.name)}</span>
+            ${scoreCellHtml(r.count, r.total, r.toPar)}
+          </div>`).join('')}
+        </div>`)}
+      ${lbSection(`round-${round.id}-net`, `${escapeHtml(round.label)} — ${escapeHtml(round.course)} · Net`, `
+        <div class="card">${net.map((r,i)=>`
+          <div class="lb-row">
+            <span class="lb-rank">${r.count===0?'–':i+1}</span>
+            <span class="lb-name">${escapeHtml(r.name)}</span>
+            ${scoreCellHtml(r.count, r.total, r.toPar)}
+          </div>`).join('')}
+        </div>`)}
+    ${gameHtml}
+    `;
+  }
+}
+
+function myTeeGroup(round){
+  const groups = round.teeGroups || [];
+  if(!groups.length) return null; // no lock configured for this round
+  const myId = localStorage.getItem(`myTeeGroupId_${round.id}`);
+  if(!myId) return undefined; // no selection made yet for this round
+  return groups.find(g=>g.id===myId) || undefined;
+}
+
+function renderGroupPicker(round, visRounds){
+  const groups = round.teeGroups || [];
+  return `
+    <h2 class="section-title">Select Your Foursome</h2>
+    <div class="card">
+      <label>Round</label>
+      <select id="pickerRoundSelect">
+        ${visRounds.map(r=>`<option value="${r.id}" ${r.id===round.id?'selected':''}>${escapeHtml(r.label)} — ${escapeHtml(r.course)}</option>`).join('')}
+      </select>
+      <p class="muted" style="margin:10px 0 0;">Pick the group you're playing in for ${escapeHtml(round.label)}. This phone will only be able to enter scores for these 4 players, for this round.</p>
+    </div>
+    <div class="card">
+      ${groups.map(g=>`
+        <button class="btn secondary" data-pick-teegroup="${g.id}" style="margin-bottom:10px; text-align:left; padding:14px 16px;">
+          <div style="font-family:'Oswald',sans-serif; font-size:15px; margin-bottom:4px;">${escapeHtml(g.name || 'Group')}</div>
+          <div style="font-size:12px; opacity:0.75; font-family:'IBM Plex Sans',sans-serif;">${g.players.filter(Boolean).map(escapeHtml).join(', ') || 'No players set'}</div>
+        </button>`).join('')}
+    </div>
+  `;
+}
+
+function renderEnter(){
+  if(!state.players.length) return `<div class="empty-state">Add players in Setup first.</div>`;
+  const visRounds = state.rounds.filter(r=>r.visible!==false);
+  if(!visRounds.length) return `<div class="empty-state">No rounds are visible yet. Check back once the organizer opens one up.</div>`;
+  if(!visRounds.some(r=>r.id===entrySel.round)) entrySel.round = visRounds[0].id;
+  const round = getRound(entrySel.round);
+
+  const myGroup = myTeeGroup(round);
+  if(myGroup === undefined) return renderGroupPicker(round, visRounds);
+
+  const allowedPlayers = myGroup ? sortedPlayers().filter(p=>myGroup.players.includes(p.name)) : sortedPlayers();
+  if(myGroup && !allowedPlayers.some(p=>p.name===entrySel.player)){
+    entrySel.player = allowedPlayers.length ? allowedPlayers[0].name : '';
+  }
+
+  const modeToggle = `<div class="toplevel-tabs">
+    <button data-entry-mode="player" class="${entryMode==='player'?'active':''}">BY PLAYER</button>
+    <button data-entry-mode="hole" class="${entryMode==='hole'?'active':''}">BY HOLE</button>
+  </div>`;
+
+  const roundPicker = `
+    <div class="card">
+      <label>Round</label>
+      <select id="roundSelect">
+        ${visRounds.map(r=>`<option value="${r.id}" ${r.id===round.id?'selected':''}>${escapeHtml(r.label)} — ${escapeHtml(r.course)}</option>`).join('')}
+      </select>
+      ${myGroup ? `<button class="btn secondary" id="switchGroupBtn" style="margin-top:4px;">Not ${escapeHtml(myGroup.name || 'this group')}? Switch group</button>` : ''}
+    </div>`;
+
+  if(entryMode === 'hole'){
+    return modeToggle + roundPicker + renderEnterByHole(round, allowedPlayers, myGroup);
+  }
+  return modeToggle + roundPicker + renderEnterByPlayer(round, allowedPlayers);
+}
+
+function renderEnterByPlayer(round, allowedPlayers){
+  const player = entrySel.player;
+  let rows = '';
+  for(let h=1; h<=18; h++){
+    const existing = getScore(round.id, player, h);
+    const par = round.par[h-1];
+    const isKp = (round.kpHoles||[]).includes(h);
+    const isLd = (round.ldHoles||[]).includes(h);
+    let extraHtml = '';
+    if(isKp){
+      const kpEntry = state.kp[kpKey(round.id, player, h)] || {};
+      extraHtml += `<div class="hole-extra">
+        <span>KP</span>
+        <input type="number" inputmode="numeric" data-kp-feet="${h}" placeholder="ft" value="${kpEntry.feet!==undefined && kpEntry.feet!==null?kpEntry.feet:''}">
+        <span>ft</span>
+        <input type="number" inputmode="numeric" data-kp-inches="${h}" placeholder="in" value="${kpEntry.inches!==undefined && kpEntry.inches!==null?kpEntry.inches:''}">
+        <span>in</span>
+      </div>`;
+    }
+    if(isLd){
+      const ldEntry = state.ld[ldKey(round.id, player, h)] || {};
+      extraHtml += `<div class="hole-extra">
+        <label><input type="checkbox" data-ld-check="${h}" ${ldEntry.checked?'checked':''}> LD?</label>
+      </div>`;
+    }
+    rows += `
+      <div class="hole-row" data-hole-row="${h}">
+        <span class="hole-row-num">${h}</span>
+        <span class="hole-row-par">${par ? `Par ${par}` : ''}</span>
+        <input type="number" inputmode="numeric" class="hole-row-input" data-live-hole="${h}" value="${existing!==null?existing:''}" placeholder="-">
+        <button class="clear-x" data-clear-hole="${h}" title="Clear" style="${existing!==null?'':'visibility:hidden;'}">&times;</button>
+        <span class="hole-row-status" data-status-key="${player}__${h}"></span>
+        ${extraHtml}
+      </div>`;
+  }
+
+  return `
+    ${round.format==='bbb' ? '<p class="muted">Bingo Bango Bongo picks are made by hole. Switch to BY HOLE to record them.</p>' : ''}
+    <div class="card">
+      <label>Player</label>
+      <select id="playerSelect">
+        ${allowedPlayers.map(p=>`<option value="${escapeAttr(p.name)}" ${p.name===player?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="card hole-list">
+      ${rows}
+    </div>
+    <p class="muted">Scores save automatically as you type — no need to press anything.</p>
+  `;
+}
+
+function renderEnterByHole(round, allowedPlayers, myGroup){
+  if(!entrySel.hole || entrySel.hole < 1 || entrySel.hole > 18) entrySel.hole = 1;
+  const hole = entrySel.hole;
+  const par = round.par[hole-1];
+  const isKp = (round.kpHoles||[]).includes(hole);
+  const isLd = (round.ldHoles||[]).includes(hole);
+
+  const rows = allowedPlayers.map(p=>{
+    const existing = getScore(round.id, p.name, hole);
+    let extraHtml = '';
+    if(isKp){
+      const kpEntry = state.kp[kpKey(round.id, p.name, hole)] || {};
+      extraHtml += `<div class="hole-extra">
+        <span>KP</span>
+        <input type="number" inputmode="numeric" data-kp-feet-player="${escapeAttr(p.name)}" placeholder="ft" value="${kpEntry.feet!==undefined && kpEntry.feet!==null?kpEntry.feet:''}">
+        <span>ft</span>
+        <input type="number" inputmode="numeric" data-kp-inches-player="${escapeAttr(p.name)}" placeholder="in" value="${kpEntry.inches!==undefined && kpEntry.inches!==null?kpEntry.inches:''}">
+        <span>in</span>
+      </div>`;
+    }
+    if(isLd){
+      const ldEntry = state.ld[ldKey(round.id, p.name, hole)] || {};
+      extraHtml += `<div class="hole-extra">
+        <label><input type="checkbox" data-ld-check-player="${escapeAttr(p.name)}" ${ldEntry.checked?'checked':''}> LD?</label>
+      </div>`;
+    }
+    return `
+      <div class="hole-row" data-hole-row-player="${escapeAttr(p.name)}">
+        <span class="hole-row-num" style="width:auto; flex:1; text-align:left; font-family:'IBM Plex Sans',sans-serif; font-size:15px; color:var(--cream);">${escapeHtml(p.name)}</span>
+        <input type="number" inputmode="numeric" class="hole-row-input" style="flex:0 0 70px;" data-live-player="${escapeAttr(p.name)}" value="${existing!==null?existing:''}" placeholder="-">
+        <button class="clear-x" data-clear-player="${escapeAttr(p.name)}" title="Clear" style="${existing!==null?'':'visibility:hidden;'}">&times;</button>
+        <span class="hole-row-status" data-status-key="${p.name}__${hole}"></span>
+        ${extraHtml}
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <button class="btn secondary" id="prevHoleBtn" style="width:auto; padding:10px 16px;" ${hole<=1?'disabled':''}>&larr; Prev</button>
+        <div style="text-align:center;">
+          <div style="font-family:'Oswald',sans-serif; font-size:24px; color:var(--amber);">Hole ${hole}</div>
+          <div class="muted">${par ? `Par ${par}` : ''}</div>
+        </div>
+        <button class="btn secondary" id="nextHoleBtn" style="width:auto; padding:10px 16px;" ${hole>=18?'disabled':''}>Next &rarr;</button>
+      </div>
+    </div>
+    ${round.format==='bbb' ? renderBbbCard(round, allowedPlayers, hole) : ''}
+    <div class="card hole-list">
+      ${allowedPlayers.length ? rows : `<div class="empty-state">${myGroup ? 'No players in your group.' : 'No players yet.'}</div>`}
+    </div>
+    <p class="muted">Scores save automatically as you type — no need to press anything.</p>
+  `;
+}
+
+function renderBbbCard(round, allowedPlayers, hole){
+  const rec = state.bbb[`${round.id}__${hole}`] || {};
+  const pts = round.gameSettings.bbbPoints;
+  const fields = [['green','Bingo — first on the green'],['closest','Bango — closest to the pin'],['first','Bongo — first in the hole']];
+  return `<div class="card">
+    <div style="font-family:'Oswald',sans-serif; color:var(--amber); margin-bottom:6px;">Bingo Bango Bongo — Hole ${hole}</div>
+    ${fields.map(([f,l])=>`
+      <label style="margin-top:8px;">${l} <span class="hcp">${pts[f]} pt</span></label>
+      <select data-bbb-field="${f}">
+        <option value="">— none (no point) —</option>
+        ${allowedPlayers.map(p=>`<option value="${escapeAttr(p.name)}" ${rec[f]===p.name?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+      </select>`).join('')}
+  </div>`;
+}
+
+function renderGameSettings(round){
+  const gs = round.gameSettings;
+  const f = round.format;
+  if(!GAME_LABELS[f]) return '';
+  const key = `${round.id}-game`;
+  if(!(key in uiDetailsState)) uiDetailsState[key] = true;
+  const open = uiDetailsState[key] ? 'open' : '';
+  const numField = (path, val, label)=>`<div><label>${label}</label><input type="number" step="1" inputmode="numeric" data-gs="${round.id}|${path}" value="${val}"></div>`;
+
+  let inner = '';
+  if(f==='shamble'){
+    const size = gs.shambleSize;
+    inner = `
+      <label>Players per team</label>
+      <select data-gs-size="${round.id}">
+        ${[2,3,4].map(n=>`<option value="${n}" ${size===n?'selected':''}>${n} players</option>`).join('')}
+      </select>
+      ${numField('shamblePct', gs.shamblePct, 'Handicap % applied (100 = full handicap)')}
+      <p class="muted" style="margin:8px 0 12px;">Each hole, the team's score is its best net. Teams are built from the player list.</p>
+      ${(round.shambleTeams||[]).map((t,ti)=>`
+        <div class="group-box">
+          <div class="group-label">Team ${ti+1} <button class="remove-x" data-remove-shteam="${round.id}:${ti}" style="float:right;">&times;</button></div>
+          ${Array.from({length:size}, (_,slot)=>`
+            <select data-st-slot="${round.id}:${ti}:${slot}">
+              <option value="">— select player —</option>
+              ${sortedPlayers().map(p=>`<option value="${escapeAttr(p.name)}" ${t.players[slot]===p.name?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+            </select>`).join('')}
+        </div>`).join('')}
+      <button class="btn secondary" data-add-shteam="${round.id}">Add Team</button>`;
+  }
+  if(f==='bbb'){
+    inner = `
+      <p class="muted" style="margin:0 0 12px;">Individual play. Record each hole's Bingo, Bango and Bongo winners under Enter Scores → By Hole.</p>
+      <div class="row-flex">
+        ${numField('bbbPoints.green', gs.bbbPoints.green, 'Bingo (first on green)')}
+        ${numField('bbbPoints.closest', gs.bbbPoints.closest, 'Bango (closest to pin)')}
+      </div>
+      <div class="row-flex">
+        ${numField('bbbPoints.first', gs.bbbPoints.first, 'Bongo (first in hole)')}
+      </div>`;
+  }
+  if(f==='stableford'){
+    const t = gs.stablefordPoints;
+    inner = `
+      ${numField('stablefordPct', gs.stablefordPct, 'Handicap % applied (100 = full handicap)')}
+      <p class="muted" style="margin:8px 0 12px;">Points per hole, based on net score against par.</p>
+      <div class="row-flex">
+        ${numField('stablefordPoints.albatross', t.albatross, 'Albatross or better')}
+        ${numField('stablefordPoints.eagle', t.eagle, 'Eagle')}
+      </div>
+      <div class="row-flex">
+        ${numField('stablefordPoints.birdie', t.birdie, 'Birdie')}
+        ${numField('stablefordPoints.par', t.par, 'Par')}
+      </div>
+      <div class="row-flex">
+        ${numField('stablefordPoints.bogey', t.bogey, 'Bogey')}
+        ${numField('stablefordPoints.double', t.double, 'Double bogey or worse')}
+      </div>`;
+  }
+  return `<details class="lb-details" data-details-key="${key}" ${open}>
+    <summary>${escapeHtml(GAME_LABELS[f])} settings for ${escapeHtml(round.label)}</summary>
+    <div class="card">${inner}</div>
+  </details>`;
+}
+
+function renderSetup(){
+  let html = `<h2 class="section-title">Tournament Name</h2>
+  <div class="card">
+    <input type="text" id="nameInput" value="${escapeAttr(state.name)}" autocomplete="off" autocorrect="off">
+    <button class="btn secondary" id="saveName">Update Name</button>
+  </div>
+  <div class="card">
+    <label>Tournament Banner Image URL</label>
+    <input type="text" id="tournamentImageInput" value="${escapeAttr(state.tournamentImageUrl||'')}" placeholder="e.g. images/trip-banner.jpg" autocomplete="off" autocorrect="off">
+    <button class="btn secondary" id="saveTournamentImage">Update Banner</button>
+    <p class="muted" style="margin-top:10px;">Upload the image file to your GitHub repo (e.g. in an "images" folder next to index.html), then enter its filename or full URL here. Shows at the top of every page.</p>
+  </div>
+  <div class="card">
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+      <input type="checkbox" id="globalUseCourseHandicap" ${state.useCourseHandicap ? 'checked' : ''} style="width:16px; height:16px; margin:0;">
+      Use Course Handicap tournament-wide (converts Index via Rating/Slope)
+    </label>
+    <p class="muted" style="margin:10px 0 0;">Default is off — net scoring uses each player's straight Handicap Index. Turn this on to convert it into a Course Handicap using each round's Rating and Slope instead. Any round below can override this individually.</p>
+  </div>
+  <div class="card">
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+      <input type="checkbox" id="globalChatEnabled" ${state.chatEnabled !== false ? 'checked' : ''} style="width:16px; height:16px; margin:0;">
+      Enable Chat tab
+    </label>
+    <p class="muted" style="margin:10px 0 0;">When off, the Chat tab is hidden for everyone and the app stops loading chat messages. Existing messages are kept and come back when you turn it on again.</p>
+  </div>`;
+
+  html += `<h2 class="section-title">Players &amp; Handicaps (${state.players.length})</h2><div class="card">`;
+  state.players
+    .map((p,i)=>({p,i})) // keep original index for handlers before sorting for display
+    .sort((a,b)=> a.p.name.localeCompare(b.p.name))
+    .forEach(({p,i})=>{
+      html += `<div class="list-item">
+        <span>${escapeHtml(p.name)}</span>
+        <input type="number" data-hcp-index="${i}" value="${p.handicap}" step="1">
+        <button class="remove-x" data-remove-player="${i}">&times;</button>
+      </div>`;
+    });
+  html += `</div>
+  <div class="card">
+    <div class="row-flex">
+      <input type="text" id="newPlayerInput" placeholder="Player name" autocomplete="off" autocorrect="off" autocapitalize="words">
+      <input type="number" id="newPlayerHcp" placeholder="Hcp" style="max-width:70px;">
+    </div>
+    <button class="btn secondary" id="addPlayer">Add Player</button>
+  </div>`;
+
+  state.rounds.forEach((round, ri)=>{
+    const isVisible = round.visible !== false;
+    html += `<h2 class="section-title">${escapeHtml(round.label)} ${isVisible ? '' : '<span class="tag">HIDDEN</span>'}</h2>
+    <div class="card">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0 0 14px;">
+        <input type="checkbox" data-round-visible="${round.id}" ${isVisible?'checked':''} style="width:16px; height:16px; margin:0;">
+        Visible to players (Board &amp; Enter Scores)
+      </label>
+      <label>Course</label>
+      <input type="text" data-round-course="${round.id}" value="${escapeAttr(round.course)}" autocomplete="off" autocorrect="off">
+      <label>Course Logo Image URL</label>
+      <input type="text" data-round-logo="${round.id}" value="${escapeAttr(round.logoUrl||'')}" placeholder="e.g. images/twin-warriors-logo.png" autocomplete="off" autocorrect="off">
+      <div class="row-flex">
+        <div>
+          <label>Tee Box</label>
+          <input type="text" data-round-teebox="${round.id}" value="${escapeAttr(round.teeBox||'')}" placeholder="e.g. White">
+        </div>
+        <div>
+          <label>First Tee Time</label>
+          <input type="text" data-round-teetime="${round.id}" value="${escapeAttr(round.firstTeeTime||'')}" placeholder="e.g. 8:10 AM">
+        </div>
+      </div>
+      <label>Total Yardage</label>
+      <input type="text" data-round-yardage="${round.id}" value="${escapeAttr(round.totalYardage||'')}" placeholder="e.g. 6412">
+      <label>Date (optional, TBD is fine)</label>
+      <input type="text" data-round-date="${round.id}" value="${escapeAttr(round.date)}" placeholder="TBD">
+      <label>Format</label>
+      <select data-round-format="${round.id}">
+        <option value="stroke" ${round.format==='stroke'?'selected':''}>Standard stroke play</option>
+        <option value="sixes" ${round.format==='sixes'?'selected':''}>Individual Sixes (foursome, rotating 1-on-1, net score)</option>
+        <option value="pairs" ${round.format==='pairs'?'selected':''}>Team Pairs (best-ball gross + best-ball net)</option>
+        <option value="trad6" ${round.format==='trad6'?'selected':''}>Traditional Sixes (round robin 2v2, 1 pt win / ½ tie)</option>
+        <option value="shamble" ${round.format==='shamble'?'selected':''}>Shamble (net, teams of 2, 3 or 4)</option>
+        <option value="bbb" ${round.format==='bbb'?'selected':''}>Bingo Bango Bongo (individual, points per hole)</option>
+        <option value="stableford" ${round.format==='stableford'?'selected':''}>Stableford (net, points per hole)</option>
+      </select>
+      <label style="margin-top:12px;">Course Handicap for this round</label>
+      <select data-round-usech="${round.id}">
+        <option value="inherit" ${round.useCourseHandicap===null?'selected':''}>Use tournament default (currently ${state.useCourseHandicap ? 'ON' : 'OFF'})</option>
+        <option value="on" ${round.useCourseHandicap===true?'selected':''}>Force ON for this round</option>
+        <option value="off" ${round.useCourseHandicap===false?'selected':''}>Force OFF for this round</option>
+      </select>
+      <div class="row-flex">
+        <div>
+          <label>Course Rating</label>
+          <input type="number" step="0.1" data-round-rating="${round.id}" value="${round.rating!==null && round.rating!==undefined ? round.rating : ''}" placeholder="e.g. 69.9">
+        </div>
+        <div>
+          <label>Slope Rating</label>
+          <input type="number" data-round-slope="${round.id}" value="${round.slope!==null && round.slope!==undefined ? round.slope : ''}" placeholder="e.g. 133">
+        </div>
+      </div>
+      <p class="muted" style="margin:-4px 0 12px;">Only used if Course Handicap is ON for this round (via the setting above).</p>
+      <label>Closest to Pin holes (comma-separated)</label>
+      <input type="text" data-round-kpholes="${round.id}" value="${(round.kpHoles||[]).join(', ')}" placeholder="e.g. 4, 13">
+      <label>Longest Drive holes (comma-separated)</label>
+      <input type="text" data-round-ldholes="${round.id}" value="${(round.ldHoles||[]).join(', ')}" placeholder="e.g. 8, 16">
+    </div>
+    <details data-details-key="${round.id}-hcpoverrides" ${uiDetailsState[`${round.id}-hcpoverrides`] ? 'open' : ''}>
+      <summary>Handicap Adjustments for ${escapeHtml(round.label)} (optional, per-player)</summary>
+      <div class="card">
+        <p class="muted" style="margin-top:0;">Leave blank to use each player's default handicap from above. Set a value here only to adjust it for this specific round — e.g. after a blow-up or a career round.</p>
+        ${sortedPlayers().map(p=>{
+          const override = round.handicapOverrides && round.handicapOverrides[p.name];
+          const hasOverride = override !== undefined && override !== null && override !== '';
+          return `<div class="list-item">
+            <span>${escapeHtml(p.name)} <span class="muted">(default ${Number(p.handicap)||0})</span></span>
+            <input type="number" data-hcp-override="${round.id}:${escapeAttr(p.name)}" value="${hasOverride?override:''}" placeholder="${Number(p.handicap)||0}" style="width:70px;">
+          </div>`;
+        }).join('')}
+      </div>
+    </details>
+    <details data-details-key="${round.id}-teegroups" ${uiDetailsState[`${round.id}-teegroups`] ? 'open' : ''}>
+      <summary>Tee Groups for ${escapeHtml(round.label)} (who can enter scores for whom)</summary>
+      <div class="card">
+        <p class="muted" style="margin-top:0;">Each phone picks one group here for this round. Groups reset per round, so today's foursomes don't carry over to a different day's mix.</p>
+        ${(round.format==='sixes' || round.format==='trad6') ? `<button class="btn secondary" data-copy-quads-to-teegroups="${round.id}">Copy from this Round's Foursomes</button>` : ''}
+      </div>
+      <div class="card">
+        ${(round.teeGroups||[]).map((tg, ti)=>`
+          <div class="group-box">
+            <div class="group-label">${escapeHtml(tg.name || `Group ${ti+1}`)} <button class="remove-x" data-remove-teegroup="${round.id}:${ti}" style="float:right;">&times;</button></div>
+            <input type="text" data-teegroup-name="${round.id}:${ti}" value="${escapeAttr(tg.name || '')}" placeholder="Group name (e.g. Group 1)" style="margin-bottom:8px;">
+            ${[0,1,2,3].map(slot=>`
+              <select data-teegroup-slot="${round.id}:${ti}:${slot}">
+                <option value="">— select player —</option>
+                ${sortedPlayers().map(p=>`<option value="${escapeAttr(p.name)}" ${tg.players[slot]===p.name?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+              </select>
+            `).join('')}
+          </div>`).join('')}
+        <button class="btn secondary" data-add-teegroup="${round.id}">Add Group</button>
+      </div>
+    </details>
+    <details data-details-key="${round.id}-scorecard" ${uiDetailsState[`${round.id}-scorecard`] ? 'open' : ''}>
+      <summary>Scorecard — Par &amp; Stroke Index (18 holes)</summary>
+      <div class="card">
+        ${KNOWN_SCORECARDS[round.course] ? `<button class="btn secondary" data-autofill-card="${round.id}">Autofill ${escapeHtml(round.course)} Card</button>` : ''}
+        <div class="scorecard-grid">
+          <div class="hdr">Hole</div><div class="hdr">Par</div><div class="hdr">Stroke Index</div>
+          ${Array.from({length:18},(_,h)=>`
+            <div class="hole-num">${h+1}</div>
+            <input type="number" class="hole-input" data-par="${round.id}:${h}" value="${round.par[h]!==null?round.par[h]:''}" placeholder="-">
+            <input type="number" class="hole-input" data-hcpidx="${round.id}:${h}" value="${round.hcpIndex[h]!==null?round.hcpIndex[h]:''}" placeholder="-">
+          `).join('')}
+        </div>
+        <p class="muted" style="margin-top:10px;">Stroke Index = the hole's difficulty rank (1 = hardest) from the scorecard, used to allocate handicap strokes.</p>
+      </div>
+    </details>`;
+
+    if(round.format==='sixes' || round.format==='trad6'){
+      const quadsKey = `${round.id}-quads`;
+      if(!(quadsKey in uiDetailsState)) uiDetailsState[quadsKey] = true;
+      html += `<details data-details-key="${quadsKey}" ${uiDetailsState[quadsKey] ? 'open' : ''}><summary>Foursomes for ${escapeHtml(round.label)} (${round.format==='trad6' ? 'round robin 2v2 matches, 1 pt win / ½ tie' : 'rotating 1-on-1, net score, 2/1/0 per hole'})</summary><div class="card">`;
+      html += `<button class="btn secondary" data-autofill-quads="${round.id}" style="margin-bottom:12px;">Load Round 1 Roster &amp; Matchups</button>`;
+      (round.quads||[]).forEach((quad, qi)=>{
+        const filled = quad.players.filter(Boolean).length === 4;
+        html += `<div class="group-box">
+          <div class="group-label">Foursome ${qi+1} <button class="remove-x" data-remove-quad="${round.id}:${qi}" style="float:right;">&times;</button></div>
+          ${[0,1,2,3].map(slot=>`
+            <select data-quad-slot="${round.id}:${qi}:${slot}">
+              <option value="">— select player —</option>
+              ${sortedPlayers().map(p=>`<option value="${escapeAttr(p.name)}" ${quad.players[slot]===p.name?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+            </select>
+          `).join('')}
+          <label style="margin-top:8px;">Matchup schedule</label>
+          ${[0,1,2].map(seg=>{
+            const pairs = filled ? quadPairsForSegment(quad, seg) : null;
+            const holeRange = `${seg*6+1}-${seg*6+6}`;
+            return `<div class="muted" style="margin-bottom:6px;">
+              Holes ${holeRange}: ${pairs ? `${escapeHtml(pairs[0][0])} vs ${escapeHtml(pairs[0][1])} &nbsp;|&nbsp; ${escapeHtml(pairs[1][0])} vs ${escapeHtml(pairs[1][1])}` : 'select all 4 players above'}
+              <select data-quad-partner="${round.id}:${qi}:${seg}" style="margin-top:4px;">
+                <option value="1" ${quad.partnerOrder[seg]===1?'selected':''}>Slot 1 pairs with Slot 2</option>
+                <option value="2" ${quad.partnerOrder[seg]===2?'selected':''}>Slot 1 pairs with Slot 3</option>
+                <option value="3" ${quad.partnerOrder[seg]===3?'selected':''}>Slot 1 pairs with Slot 4</option>
+              </select>
+            </div>`;
+          }).join('')}
+        </div>`;
+      });
+      html += `<button class="btn secondary" data-add-quad="${round.id}">Add Foursome</button></div></details>`;
+    }
+
+    html += renderGameSettings(round);
+
+    if(round.format==='pairs'){
+      const pairsKey = `${round.id}-pairs`;
+      if(!(pairsKey in uiDetailsState)) uiDetailsState[pairsKey] = true;
+      html += `<details data-details-key="${pairsKey}" ${uiDetailsState[pairsKey] ? 'open' : ''}><summary>Pairs for ${escapeHtml(round.label)} (team best-ball gross + net)</summary><div class="card">`;
+      (round.pairs||[]).forEach((pair, pi)=>{
+        html += `<div class="group-box">
+          <div class="group-label">Pair ${pi+1} <button class="remove-x" data-remove-pair="${round.id}:${pi}" style="float:right;">&times;</button></div>
+          ${[0,1].map(slot=>`
+            <select data-pair-slot="${round.id}:${pi}:${slot}">
+              <option value="">— select player —</option>
+              ${sortedPlayers().map(p=>`<option value="${escapeAttr(p.name)}" ${pair.players[slot]===p.name?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+            </select>
+          `).join('')}
+          <label style="margin-top:2px;">Score Adjustment (+/-, best ball gross+net only)</label>
+          <input type="number" step="1" inputmode="numeric" placeholder="0" data-pair-adjustment="${round.id}:${pi}" value="${pair.adjustment || 0}">
+        </div>`;
+      });
+      html += `<button class="btn secondary" data-add-pair="${round.id}">Add Pair</button></div></details>`;
+    }
+  });
+
+  html += `<h2 class="section-title">Backup</h2>
+  <div class="card">
+    <button class="btn secondary" id="exportBtn">Download Backup (.json)</button>
+    <p class="muted" style="margin:10px 0;">Saves everything — players, handicaps, scorecards, groups, and scores — as a file you can keep or restore later.</p>
+    <label>Restore from Backup</label>
+    <input type="file" id="importFile" accept="application/json">
+    <div class="status-msg" id="importStatus"></div>
+  </div>
+  <div class="card">
+    <button class="btn secondary" id="exportExcelBtn">Export to Excel (.xlsx)</button>
+    <p class="muted" style="margin-top:10px;">Downloads a spreadsheet with Overall standings, each round's gross/net and hole-by-hole scores, and Round 1's Individual Sixes points. Open it directly in Excel, or import it into Google Sheets (File → Import → Upload).</p>
+  </div>`;
+
+  if(BACKEND.mode === 'firebase'){
+    html += `<div class="card">
+    <button class="btn secondary" id="lockSetupBtn">Sign out of Setup</button>
+    <p class="muted" style="margin-top:10px;">Setup unlocks with the organizer password and locks again automatically when you close this browser tab.</p>
+  </div>`;
+  }
+
+  html += `<div class="muted" style="text-align:center; margin-top:16px;">Everyone using this link shares the same live data.</div>`;
+  return html;
+}
+
+function attachHandlers(){
+  document.querySelectorAll('nav.tabs button').forEach(b=>{
+    b.onclick = async ()=>{
+      const tab = b.dataset.tab;
+      if(BACKEND.mode === 'firebase'){
+        try{
+          if(tab === 'setup') await ensureAdminSession();        // organizer password
+          else if(tab === 'enter') await ensureScoringSession();  // scorer password
+        }catch(e){ return; } // cancelled or failed sign-in: stay on the current tab
+      }
+      currentTab = tab;
+      render();
+    };
+  });
+
+  document.querySelectorAll('[data-details-key]').forEach(el=>{
+    el.ontoggle = ()=>{ uiDetailsState[el.dataset.detailsKey] = el.open; };
+  });
+
+  if(currentTab==='leaderboard'){
+    document.querySelectorAll('[data-lb]').forEach(b=>{
+      b.onclick = ()=>{ lbView=b.dataset.lb; render(); };
+    });
+  }
+
+  if(currentTab==='enter'){
+    const pickerRoundSelect = document.getElementById('pickerRoundSelect');
+    if(pickerRoundSelect) pickerRoundSelect.onchange = e=>{ entrySel.round = e.target.value; render(); };
+
+    document.querySelectorAll('[data-pick-teegroup]').forEach(btn=>{
+      btn.onclick = ()=>{
+        localStorage.setItem(`myTeeGroupId_${entrySel.round}`, btn.dataset.pickTeegroup);
+        entrySel.player = '';
+        render();
+      };
+    });
+    const switchGroupBtn = document.getElementById('switchGroupBtn');
+    if(switchGroupBtn) switchGroupBtn.onclick = ()=>{
+      if(!confirm('Switch to a different foursome for this round on this phone?')) return;
+      localStorage.removeItem(`myTeeGroupId_${entrySel.round}`);
+      render();
+    };
+
+    document.querySelectorAll('[data-entry-mode]').forEach(btn=>{
+      btn.onclick = ()=>{ entryMode = btn.dataset.entryMode; render(); };
+    });
+
+    const roundSelect = document.getElementById('roundSelect');
+    const playerSelect = document.getElementById('playerSelect');
+    if(roundSelect) roundSelect.onchange = e=>{ entrySel.round=e.target.value; render(); };
+    if(playerSelect) playerSelect.onchange = e=>{ entrySel.player=e.target.value; render(); };
+
+    const prevHoleBtn = document.getElementById('prevHoleBtn');
+    const nextHoleBtn = document.getElementById('nextHoleBtn');
+    if(prevHoleBtn) prevHoleBtn.onclick = ()=>{ if(entrySel.hole>1){ entrySel.hole--; render(); } };
+    if(nextHoleBtn) nextHoleBtn.onclick = ()=>{ if(entrySel.hole<18){ entrySel.hole++; render(); } };
+
+    // By-player mode: one player fixed, looping over all 18 holes
+    document.querySelectorAll('[data-live-hole]').forEach(input=>{
+      input.oninput = ()=>{
+        const hole = Number(input.dataset.liveHole);
+        const clearBtn = document.querySelector(`[data-clear-hole="${hole}"]`);
+        if(clearBtn) clearBtn.style.visibility = input.value==='' ? 'hidden' : 'visible';
+        scheduleHoleSave(entrySel.round, entrySel.player, hole, input.value);
+      };
+    });
+    document.querySelectorAll('[data-clear-hole]').forEach(btn=>{
+      btn.onclick = ()=>{
+        const hole = Number(btn.dataset.clearHole);
+        const input = document.querySelector(`[data-live-hole="${hole}"]`);
+        if(input) input.value = '';
+        btn.style.visibility = 'hidden';
+        scheduleHoleSave(entrySel.round, entrySel.player, hole, '', true);
+      };
+    });
+    document.querySelectorAll('[data-kp-feet]').forEach(inp=>{
+      inp.oninput = ()=> scheduleKpSave(entrySel.round, entrySel.player, Number(inp.dataset.kpFeet), 'feet', inp.value);
+    });
+    document.querySelectorAll('[data-kp-inches]').forEach(inp=>{
+      inp.oninput = ()=> scheduleKpSave(entrySel.round, entrySel.player, Number(inp.dataset.kpInches), 'inches', inp.value);
+    });
+    document.querySelectorAll('[data-ld-check]').forEach(cb=>{
+      cb.onchange = ()=> saveLdCheck(entrySel.round, entrySel.player, Number(cb.dataset.ldCheck), cb.checked);
+    });
+
+    // By-hole mode: one hole fixed, looping over all players in the group
+    document.querySelectorAll('[data-live-player]').forEach(input=>{
+      input.oninput = ()=>{
+        const player = input.dataset.livePlayer;
+        const clearBtn = document.querySelector(`[data-clear-player="${CSS.escape(player)}"]`);
+        if(clearBtn) clearBtn.style.visibility = input.value==='' ? 'hidden' : 'visible';
+        scheduleHoleSave(entrySel.round, player, entrySel.hole, input.value);
+      };
+    });
+    document.querySelectorAll('[data-clear-player]').forEach(btn=>{
+      btn.onclick = ()=>{
+        const player = btn.dataset.clearPlayer;
+        const input = document.querySelector(`[data-live-player="${CSS.escape(player)}"]`);
+        if(input) input.value = '';
+        btn.style.visibility = 'hidden';
+        scheduleHoleSave(entrySel.round, player, entrySel.hole, '', true);
+      };
+    });
+    document.querySelectorAll('[data-kp-feet-player]').forEach(inp=>{
+      inp.oninput = ()=> scheduleKpSave(entrySel.round, inp.dataset.kpFeetPlayer, entrySel.hole, 'feet', inp.value);
+    });
+    document.querySelectorAll('[data-kp-inches-player]').forEach(inp=>{
+      inp.oninput = ()=> scheduleKpSave(entrySel.round, inp.dataset.kpInchesPlayer, entrySel.hole, 'inches', inp.value);
+    });
+    document.querySelectorAll('[data-ld-check-player]').forEach(cb=>{
+      cb.onchange = ()=> saveLdCheck(entrySel.round, cb.dataset.ldCheckPlayer, entrySel.hole, cb.checked);
+    });
+    document.querySelectorAll('[data-bbb-field]').forEach(sel=>{
+      sel.onchange = async ()=>{
+        const field = sel.dataset.bbbField;
+        const key = `${entrySel.round}__${entrySel.hole}`;
+        const v = sel.value || null;
+        if(!state.bbb[key]) state.bbb[key] = {};
+        state.bbb[key][field] = v;
+        try{ await persistScoring({ path:`bbb/${key}/${field}`, value: v }); }catch(e){}
+        render();
+      };
+    });
+  }
+
+  if(currentTab==='setup'){
+    const saveNameBtn = document.getElementById('saveName');
+    if(saveNameBtn) saveNameBtn.onclick = async ()=>{
+      state.name = document.getElementById('nameInput').value || 'Tournament';
+      await saveState(); render();
+    };
+    const saveTournamentImageBtn = document.getElementById('saveTournamentImage');
+    if(saveTournamentImageBtn) saveTournamentImageBtn.onclick = async ()=>{
+      state.tournamentImageUrl = document.getElementById('tournamentImageInput').value.trim();
+      await saveState(); render();
+    };
+    const globalUseCourseHandicapCb = document.getElementById('globalUseCourseHandicap');
+    if(globalUseCourseHandicapCb) globalUseCourseHandicapCb.onchange = async ()=>{
+      state.useCourseHandicap = globalUseCourseHandicapCb.checked;
+      await saveState(); render();
+    };
+    const globalChatEnabledCb = document.getElementById('globalChatEnabled');
+    if(globalChatEnabledCb) globalChatEnabledCb.onchange = async ()=>{
+      state.chatEnabled = globalChatEnabledCb.checked;
+      await saveState(); render();
+    };
+    const addPlayerBtn = document.getElementById('addPlayer');
+    if(addPlayerBtn) addPlayerBtn.onclick = async ()=>{
+      const name = document.getElementById('newPlayerInput').value.trim();
+      const hcp = Number(document.getElementById('newPlayerHcp').value) || 0;
+      if(!name) return;
+      state.players.push({name, handicap: hcp});
+      await saveState(); render();
+    };
+
+    document.querySelectorAll('[data-copy-quads-to-teegroups]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const round = getRound(btn.dataset.copyQuadsToTeegroups);
+        const validQuads = (round.quads||[]).filter(q=>q.players.filter(Boolean).length===4);
+        if(!validQuads.length){
+          alert('This round\'s foursomes aren\'t set up yet — use "Load Round 1 Roster & Matchups" first, or build Tee Groups manually below.');
+          return;
+        }
+        round.teeGroups = validQuads.map((q,i)=>({
+          id: 'teegroup-' + Date.now() + '-' + i,
+          name: `Group ${i+1}`,
+          players: q.players.slice()
+        }));
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-add-teegroup]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const round = getRound(btn.dataset.addTeegroup);
+        round.teeGroups.push({ id: 'teegroup-' + Date.now(), name: `Group ${round.teeGroups.length+1}`, players:['','','',''] });
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-remove-teegroup]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        if(!confirm('Remove this tee group?')) return;
+        const [rid, ti] = btn.dataset.removeTeegroup.split(':');
+        getRound(rid).teeGroups.splice(Number(ti),1);
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-teegroup-name]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        const [rid, ti] = inp.dataset.teegroupName.split(':');
+        getRound(rid).teeGroups[Number(ti)].name = inp.value;
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-teegroup-slot]').forEach(sel=>{
+      sel.onchange = async ()=>{
+        const [rid, ti, slot] = sel.dataset.teegroupSlot.split(':');
+        getRound(rid).teeGroups[Number(ti)].players[Number(slot)] = sel.value;
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-remove-player]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const idx = Number(btn.dataset.removePlayer);
+        const name = state.players[idx] ? state.players[idx].name : 'this player';
+        if(!confirm(`Remove ${name}? This can't be undone and will affect any groups/foursomes they're in.`)) return;
+        state.players.splice(idx,1);
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-hcp-index]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        state.players[Number(inp.dataset.hcpIndex)].handicap = Number(inp.value)||0;
+        await saveState();
+      };
+    });
+    document.querySelectorAll('[data-round-course]').forEach(inp=>{
+      inp.onchange = async ()=>{ getRound(inp.dataset.roundCourse).course = inp.value; await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-round-logo]').forEach(inp=>{
+      inp.onchange = async ()=>{ getRound(inp.dataset.roundLogo).logoUrl = inp.value.trim(); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-round-teebox]').forEach(inp=>{
+      inp.onchange = async ()=>{ getRound(inp.dataset.roundTeebox).teeBox = inp.value.trim(); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-round-teetime]').forEach(inp=>{
+      inp.onchange = async ()=>{ getRound(inp.dataset.roundTeetime).firstTeeTime = inp.value.trim(); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-round-yardage]').forEach(inp=>{
+      inp.onchange = async ()=>{ getRound(inp.dataset.roundYardage).totalYardage = inp.value.trim(); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-round-date]').forEach(inp=>{
+      inp.onchange = async ()=>{ getRound(inp.dataset.roundDate).date = inp.value; await saveState(); };
+    });
+    document.querySelectorAll('[data-round-format]').forEach(sel=>{
+      sel.onchange = async ()=>{ getRound(sel.dataset.roundFormat).format = sel.value; await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-round-visible]').forEach(cb=>{
+      cb.onchange = async ()=>{ getRound(cb.dataset.roundVisible).visible = cb.checked; await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-round-usech]').forEach(sel=>{
+      sel.onchange = async ()=>{
+        const val = sel.value;
+        getRound(sel.dataset.roundUsech).useCourseHandicap = val==='on' ? true : val==='off' ? false : null;
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-round-rating]').forEach(inp=>{
+      inp.onchange = async ()=>{ getRound(inp.dataset.roundRating).rating = inp.value===''? null : Number(inp.value); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-round-slope]').forEach(inp=>{
+      inp.onchange = async ()=>{ getRound(inp.dataset.roundSlope).slope = inp.value===''? null : Number(inp.value); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-hcp-override]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        const [rid, playerName] = inp.dataset.hcpOverride.split(':');
+        const round = getRound(rid);
+        if(!round.handicapOverrides) round.handicapOverrides = {};
+        if(inp.value === ''){ delete round.handicapOverrides[playerName]; }
+        else { round.handicapOverrides[playerName] = Number(inp.value); }
+        await saveState(); render();
+      };
+    });
+    function parseHoleList(str){
+      return str.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n) && n>=1 && n<=18);
+    }
+    document.querySelectorAll('[data-round-kpholes]').forEach(inp=>{
+      inp.onchange = async ()=>{ getRound(inp.dataset.roundKpholes).kpHoles = parseHoleList(inp.value); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-round-ldholes]').forEach(inp=>{
+      inp.onchange = async ()=>{ getRound(inp.dataset.roundLdholes).ldHoles = parseHoleList(inp.value); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-par]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        const [rid, h] = inp.dataset.par.split(':');
+        getRound(rid).par[Number(h)] = inp.value===''? null : Number(inp.value);
+        await saveState();
+      };
+    });
+    document.querySelectorAll('[data-hcpidx]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        const [rid, h] = inp.dataset.hcpidx.split(':');
+        getRound(rid).hcpIndex[Number(h)] = inp.value===''? null : Number(inp.value);
+        await saveState();
+      };
+    });
+    document.querySelectorAll('[data-add-quad]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        getRound(btn.dataset.addQuad).quads.push({ players:['','','',''], partnerOrder:[2,3,1] });
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-remove-quad]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        if(!confirm('Remove this foursome and its matchups?')) return;
+        const [rid, qi] = btn.dataset.removeQuad.split(':');
+        getRound(rid).quads.splice(Number(qi),1);
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-quad-slot]').forEach(sel=>{
+      sel.onchange = async ()=>{
+        const [rid, qi, slot] = sel.dataset.quadSlot.split(':');
+        getRound(rid).quads[Number(qi)].players[Number(slot)] = sel.value;
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-quad-partner]').forEach(sel=>{
+      sel.onchange = async ()=>{
+        const [rid, qi, seg] = sel.dataset.quadPartner.split(':');
+        getRound(rid).quads[Number(qi)].partnerOrder[Number(seg)] = Number(sel.value);
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-add-pair]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        getRound(btn.dataset.addPair).pairs.push({ id: 'pair-' + Date.now(), players:['',''], adjustment: 0 });
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-remove-pair]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        if(!confirm('Remove this pair?')) return;
+        const [rid, pi] = btn.dataset.removePair.split(':');
+        getRound(rid).pairs.splice(Number(pi),1);
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-pair-slot]').forEach(sel=>{
+      sel.onchange = async ()=>{
+        const [rid, pi, slot] = sel.dataset.pairSlot.split(':');
+        getRound(rid).pairs[Number(pi)].players[Number(slot)] = sel.value;
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-pair-adjustment]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        const [rid, pi] = inp.dataset.pairAdjustment.split(':');
+        const v = inp.value.trim();
+        getRound(rid).pairs[Number(pi)].adjustment = v==='' ? 0 : (Math.trunc(Number(v)) || 0);
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-autofill-quads]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const round = getRound(btn.dataset.autofillQuads);
+        // Seed roster names (keep existing handicap if the name already exists)
+        const existingByName = {};
+        state.players.forEach(p=>{ existingByName[p.name] = p.handicap; });
+        state.players = ROSTER_R1.map(name=>({ name, handicap: existingByName[name] !== undefined ? existingByName[name] : 0 }));
+        round.quads = QUADS_R1.map(q=>({ players: q.players.slice(), partnerOrder: q.partnerOrder.slice() }));
+        await saveState(); render();
+      };
+    });
+
+    document.querySelectorAll('[data-autofill-card]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const round = getRound(btn.dataset.autofillCard);
+        const card = KNOWN_SCORECARDS[round.course];
+        if(!card) return;
+        round.par = card.par.slice();
+        round.hcpIndex = card.hcpIndex.slice();
+        await saveState();
+        render();
+      };
+    });
+
+    document.querySelectorAll('[data-gs]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        const [rid, path] = inp.dataset.gs.split('|');
+        const r = getRound(rid);
+        const v = Number(inp.value) || 0;
+        const parts = path.split('.');
+        if(parts.length===2) r.gameSettings[parts[0]][parts[1]] = v;
+        else r.gameSettings[parts[0]] = v;
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-gs-size]').forEach(sel=>{
+      sel.onchange = async ()=>{ getRound(sel.dataset.gsSize).gameSettings.shambleSize = Number(sel.value); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-st-slot]').forEach(sel=>{
+      sel.onchange = async ()=>{
+        const [rid, ti, slot] = sel.dataset.stSlot.split(':');
+        const t = getRound(rid).shambleTeams[Number(ti)];
+        while(t.players.length <= Number(slot)) t.players.push('');
+        t.players[Number(slot)] = sel.value;
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-add-shteam]').forEach(b=>{
+      b.onclick = async ()=>{
+        getRound(b.dataset.addShteam).shambleTeams.push({ id:'st-' + Math.random().toString(36).slice(2), players:[] });
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-remove-shteam]').forEach(b=>{
+      b.onclick = async ()=>{
+        const [rid, ti] = b.dataset.removeShteam.split(':');
+        getRound(rid).shambleTeams.splice(Number(ti), 1);
+        await saveState(); render();
+      };
+    });
+
+    const lockSetupBtn = document.getElementById('lockSetupBtn');
+    if(lockSetupBtn) lockSetupBtn.onclick = async ()=>{
+      try{ await fbAdminAuth.signOut(); }catch(e){}
+      currentTab = 'leaderboard';
+      render();
+    };
+
+    const exportBtn = document.getElementById('exportBtn');
+    if(exportBtn) exportBtn.onclick = ()=>{
+      const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dateStr = new Date().toISOString().slice(0,10);
+      const safeName = (state.name||'tournament').toLowerCase().replace(/[^a-z0-9]+/g,'-');
+      a.href = url;
+      a.download = `${safeName}-backup-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    const exportExcelBtn = document.getElementById('exportExcelBtn');
+    if(exportExcelBtn) exportExcelBtn.onclick = ()=>{ exportToExcel(); };
+
+    const importFile = document.getElementById('importFile');
+    if(importFile) importFile.onchange = async (e)=>{
+      const importStatus = document.getElementById('importStatus');
+      const file = e.target.files[0];
+      if(!file) return;
+      try{
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if(!parsed.players || !parsed.rounds){
+          importStatus.textContent = 'That file doesn\'t look like a valid backup.';
+          return;
+        }
+        state = normalizeState(parsed);
+        await saveState({ full: true });
+        importStatus.textContent = 'Backup restored.';
+        render();
+      }catch(err){
+        importStatus.textContent = 'Could not read that file.';
+      }
+    };
+  }
+}
+
+const saveTimers = {};
+
+function flashStatus(statusKey, text, isError){
+  const el = document.querySelector(`[data-status-key="${statusKey}"]`);
+  if(!el) return;
+  el.textContent = text;
+  el.classList.toggle('error', !!isError);
+  el.classList.add('show');
+  clearTimeout(el._fadeTimer);
+  el._fadeTimer = setTimeout(()=>{ el.classList.remove('show'); }, 1200);
+}
+
+// Saves one small scoring change (a score, a closest-to-pin distance or a
+// longest-drive flag). In Firebase mode this writes ONLY that one database
+// path, so it can never overwrite anyone else's entries and only needs the
+// scorer sign-in. Other backend modes still save the whole state.
+async function persistScoring(write){
+  if(BACKEND.mode !== 'firebase'){ await saveState(); return; }
+  try{
+    await withSession(ensureScoringSession, db => db.ref('tournament/' + write.path).set(write.value));
+  }catch(e){
+    console.error('score save failed', e);
+    if(e && e.message === 'Scorer sign-in required.'){
+      alert('Not saved — the scorer password is needed to record scores.');
+    }
+    // Nothing reached the database, so pull the real server state back down
+    // and re-render — otherwise the failed entry keeps showing locally.
+    try{
+      const serverState = await backendGet();
+      state = normalizeState(serverState);
+      render();
+    }catch(e2){ /* self-corrects on the next successful sync */ }
+    throw e;
+  }
+}
+
+// Shared debounce-then-merge-then-save helper used by scheduleHoleSave and
+// scheduleKpSave: both need to wait for the user to stop typing, re-fetch the
+// latest state (so the screen reflects other devices' entries), apply one
+// small mutation locally, then persist just that change. applyMutation returns
+// { savedLabel, write:{ path, value } } — `path` is relative to /tournament and
+// a null `value` deletes the entry.
+function debounceMergeSave(timerKey, delayMs, statusKey, applyMutation){
+  if(saveTimers[timerKey]) clearTimeout(saveTimers[timerKey]);
+  const doSave = async ()=>{
+    try{
+      const latest = await backendGet();
+      if(latest) state = normalizeState(latest);
+      const { savedLabel, write } = applyMutation();
+      await persistScoring(write);
+      flashStatus(statusKey, savedLabel);
+    }catch(e){
+      // persistScoring() already reverted `state` to the real server value and
+      // re-rendered — this just updates the small per-field status label.
+      flashStatus(statusKey, 'Failed', true);
+    }
+  };
+  if(delayMs === 0){ doSave(); }
+  else { saveTimers[timerKey] = setTimeout(doSave, delayMs); }
+}
+
+function scheduleHoleSave(round, player, hole, rawValue, immediate){
+  const statusKey = `${player}__${hole}`;
+  const timerKey = `${round}__${player}__${hole}`;
+  if(rawValue !== '' && isNaN(Number(rawValue))){
+    if(saveTimers[timerKey]) clearTimeout(saveTimers[timerKey]);
+    flashStatus(statusKey, 'Invalid', true);
+    return;
+  }
+  debounceMergeSave(timerKey, immediate ? 0 : 600, statusKey, ()=>{
+    const k = scoreKey(round, player, hole);
+    if(rawValue === ''){ delete state.scores[k]; }
+    else { state.scores[k] = Number(rawValue); }
+    return {
+      savedLabel: rawValue === '' ? 'Cleared' : 'Saved',
+      write: { path: `scores/${k}`, value: rawValue === '' ? null : Number(rawValue) }
+    };
+  });
+}
+
+function scheduleKpSave(round, player, hole, field, rawValue){
+  const statusKey = `${player}__${hole}`;
+  const timerKey = `kp__${round}__${player}__${hole}__${field}`;
+  if(rawValue !== '' && isNaN(Number(rawValue))){
+    if(saveTimers[timerKey]) clearTimeout(saveTimers[timerKey]);
+    flashStatus(statusKey, 'Invalid', true);
+    return;
+  }
+  debounceMergeSave(timerKey, 600, statusKey, ()=>{
+    const k = kpKey(round, player, hole);
+    if(!state.kp[k]) state.kp[k] = { feet: null, inches: null };
+    const value = rawValue === '' ? null : Number(rawValue);
+    state.kp[k][field] = value;
+    return { savedLabel: 'Saved', write: { path: `kp/${k}/${field}`, value } };
+  });
+}
+
+async function saveLdCheck(round, player, hole, checked){
+  const statusKey = `${player}__${hole}`;
+  try{
+    const latest = await backendGet();
+    if(latest) state = normalizeState(latest);
+    const k = ldKey(round, player, hole);
+    const prevTs = (state.ld[k] && state.ld[k].ts !== undefined && state.ld[k].ts !== null) ? state.ld[k].ts : null;
+    state.ld[k] = { checked, ts: checked ? Date.now() : prevTs };
+    await persistScoring({ path: `ld/${k}`, value: { checked, ts: state.ld[k].ts } });
+    flashStatus(statusKey, checked ? 'LD set' : 'Cleared');
+  }catch(e){
+    flashStatus(statusKey, 'Failed', true);
+  }
+}
+
+function exportToExcel(){
+  if(typeof XLSX === 'undefined'){
+    alert('Excel export library failed to load — check your connection and try again.');
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+
+  // Overall sheet
+  const overallRows = [['Player','Gross Total','Gross To Par','Net Total','Net To Par']];
+  state.players.forEach(p=>{
+    let gTotal=0,gCount=0,gParSum=0,gMissing=false;
+    let nTotal=0,nCount=0,nParSum=0,nMissing=false;
+    state.rounds.forEach(r=>{
+      const g = roundGrossTotal(r.id, p.name);
+      gTotal+=g.total; gCount+=g.count; if(g.count>0){ if(g.toPar===null) gMissing=true; else gParSum+=g.toPar; }
+      const n = roundNetTotal(r.id, p.name);
+      nTotal+=n.total; nCount+=n.count; if(n.count>0){ if(n.toPar===null) nMissing=true; else nParSum+=n.toPar; }
+    });
+    overallRows.push([
+      p.name,
+      gCount>0?gTotal:'', gCount>0 && !gMissing ? gParSum : '',
+      nCount>0?nTotal:'', nCount>0 && !nMissing ? nParSum : ''
+    ]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(overallRows), 'Overall');
+
+  // Per-round sheets: hole-by-hole gross scores, plus a summary
+  state.rounds.forEach(round=>{
+    const header = ['Player', ...Array.from({length:18},(_,i)=>`H${i+1}`), 'Gross', 'Gross ToPar', 'Net', 'Net ToPar'];
+    const rows = [header];
+    state.players.forEach(p=>{
+      const holeVals = [];
+      for(let h=1; h<=18; h++){
+        const v = getScore(round.id, p.name, h);
+        holeVals.push(v!==null ? v : '');
+      }
+      const g = roundGrossTotal(round.id, p.name);
+      const n = roundNetTotal(round.id, p.name);
+      rows.push([
+        p.name, ...holeVals,
+        g.count>0?g.total:'', g.toPar!==null?g.toPar:'',
+        n.count>0?n.total:'', n.toPar!==null?n.toPar:''
+      ]);
+    });
+    const parRow = ['Par', ...round.par.map(v=>v!==null&&v!==undefined?v:''), '', '', '', ''];
+    const hcpRow = ['Stroke Index', ...round.hcpIndex.map(v=>v!==null&&v!==undefined?v:''), '', '', '', ''];
+    rows.splice(1, 0, parRow, hcpRow);
+    const sheetName = round.label.replace(/[\\\/\?\*\[\]:]/g,'').slice(0,31);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sheetName);
+
+    if(round.format==='sixes'){
+      const totals = sixesTotalsForRound(round.id);
+      const sixesRows = [['Player','Individual Sixes Points']];
+      state.players.forEach(p=> sixesRows.push([p.name, totals[p.name]||0]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sixesRows), `${sheetName} Sixes`.slice(0,31));
+    }
+  });
+
+  const dateStr = new Date().toISOString().slice(0,10);
+  const safeName = (state.name||'tournament').toLowerCase().replace(/[^a-z0-9]+/g,'-');
+  XLSX.writeFile(wb, `${safeName}-scores-${dateStr}.xlsx`);
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+// escapeAttr is currently identical to escapeHtml (both contexts need the same
+// characters escaped); kept as a separate name so call sites document intent.
+const escapeAttr = escapeHtml;
+
+async function pollForUpdates(){
+  if(currentTab==='setup' || currentTab==='enter') return;
+  try{
+    const latest = await backendGet();
+    if(latest){
+      const normalized = normalizeState(latest);
+      if(JSON.stringify(normalized) !== JSON.stringify(state)){
+        state = normalized;
+        render();
+      }
+    }
+  }catch(e){}
+}
+
+// ============================================================
+// CHAT TAB — live chat on Firebase Realtime Database at /chat.
+// No login: people just pick a handle (remembered on their device).
+// Requires the /chat Database Rules (see chat-rules.json), otherwise
+// messages are rejected and the tab shows a friendly error.
+// ============================================================
+const CHAT_MAX_NAME    = 20;
+const CHAT_MAX_TEXT    = 300;
+const CHAT_KEEP        = 100;                    // newest messages loaded / shown
+const CHAT_TTL_MS      = 3 * 24 * 60 * 60 * 1000; // auto-delete age — must match the rule (259200000)
+const CHAT_COOLDOWN_MS = 1000;                   // minimum gap between sends from one device
+const CHAT_COLORS      = ['#7FC4A0','#E58F73','#8DB6E8','#C99AE0','#D9C46A','#E88FB4'];
+
+function chatLsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function chatLsSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+
+const CHAT_CID = (()=>{                          // anonymous per-device id, used only to style "my" messages
+  let id = chatLsGet('chatCid');
+  if(!id){
+    id = 'c' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    chatLsSet('chatCid', id);
+  }
+  return id;
+})();
+
+const chatMsgs = new Map();                      // key -> {key,name,text,ts,cid}
+let chatLoaded = false;
+let chatErr = '';
+let chatSeen = (()=>{ const s = chatLsGet('chatLastSeen'); return s === null ? null : Number(s); })();
+let chatDraft = '';
+let chatEditing = false;                         // true while changing handle
+let chatModerator = false;
+let chatLastSent = 0;
+
+function chatSanitize(key, v){
+  if(!v || typeof v.text !== 'string' || typeof v.name !== 'string') return null;
+  return {
+    key,
+    name: v.name.slice(0, CHAT_MAX_NAME),
+    text: v.text.slice(0, CHAT_MAX_TEXT),
+    ts: Number(v.ts) || 0,
+    cid: typeof v.cid === 'string' ? v.cid : ''
+  };
+}
+
+function chatColor(name){
+  let h = 0;
+  const s = String(name).toLowerCase();
+  for(let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return CHAT_COLORS[h % CHAT_COLORS.length];
+}
+
+function chatFmtTime(ts){
+  if(!ts) return '';
+  const d = new Date(ts), now = new Date();
+  const t = d.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+  if(d.toDateString() === now.toDateString()) return t;
+  return d.toLocaleDateString([], { month:'short', day:'numeric' }) + ' ' + t;
+}
+
+function chatLatestTs(){
+  let t = 0;
+  for(const m of chatMsgs.values()) if(m.ts > t) t = m.ts;
+  return t;
+}
+
+function chatNearBottom(list){
+  return list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+}
+
+// ---------- unread badge ----------
+function chatUpdateBadge(){
+  const badge = document.getElementById('chatBadge');
+  if(!badge) return;
+  let n = 0;
+  if(chatSeen !== null){
+    for(const m of chatMsgs.values()) if(m.cid !== CHAT_CID && m.ts > chatSeen) n++;
+  }
+  if(currentTab === 'chat' && document.visibilityState === 'visible') n = 0;
+  badge.textContent = n > 99 ? '99+' : String(n);
+  badge.hidden = n === 0;
+  const btn = document.querySelector('nav.tabs button[data-tab="chat"]');
+  if(btn) btn.classList.toggle('chat-unread', n > 0);
+}
+
+function chatMarkSeen(){
+  const t = chatLatestTs();
+  if(t && (chatSeen === null || t > chatSeen)){
+    chatSeen = t;
+    chatLsSet('chatLastSeen', String(t));
+  }
+  chatUpdateBadge();
+}
+
+// ---------- status line ----------
+function chatSetStatus(msg, transient){
+  if(!transient) chatErr = msg || '';
+  const el = document.getElementById('chatStatus');
+  if(!el) return;
+  el.textContent = msg || '';
+  el.hidden = !msg;
+  if(transient && msg){
+    setTimeout(()=>{ if(el.textContent === msg){ el.textContent = chatErr; el.hidden = !chatErr; } }, 5000);
+  }
+}
+
+// ---------- message list ----------
+function chatEmptyState(list){
+  const e = document.createElement('div');
+  e.className = 'chat-empty';
+  e.textContent = chatErr ? '' : (chatLoaded ? 'No messages yet. Say something!' : 'Loading chat…');
+  list.appendChild(e);
+}
+
+function chatAppend(list, m){
+  const empty = list.querySelector('.chat-empty');
+  if(empty) empty.remove();
+  const mine = m.cid === CHAT_CID;
+
+  const row = document.createElement('div');
+  row.className = 'chat-row' + (mine ? ' mine' : '');
+  row.setAttribute('data-chat-key', m.key);
+
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+
+  const meta = document.createElement('div');
+  meta.className = 'chat-meta';
+  const nm = document.createElement('span');
+  nm.className = 'chat-name';
+  nm.textContent = m.name;                       // textContent: never interpreted as HTML
+  if(!mine) nm.style.color = chatColor(m.name);
+  const tm = document.createElement('span');
+  tm.className = 'chat-time';
+  tm.textContent = chatFmtTime(m.ts);
+  meta.appendChild(nm);
+  meta.appendChild(tm);
+  if(chatModerator){
+    const x = document.createElement('button');
+    x.className = 'chat-del';
+    x.textContent = '×';
+    x.title = 'Delete message';
+    x.setAttribute('aria-label', 'Delete message');
+    x.setAttribute('data-chat-del', m.key);
+    meta.appendChild(x);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'chat-text';
+  body.textContent = m.text;
+
+  bubble.appendChild(meta);
+  bubble.appendChild(body);
+  row.appendChild(bubble);
+  list.appendChild(row);
+}
+
+function chatRenderAll(){
+  const list = document.getElementById('chatList');
+  if(!list) return;
+  list.innerHTML = '';
+  if(!chatMsgs.size) chatEmptyState(list);
+  else for(const m of chatMsgs.values()) chatAppend(list, m);
+  list.scrollTop = list.scrollHeight;
+  chatShowNewPill(false);
+}
+
+function chatShowNewPill(show){
+  const p = document.getElementById('chatNewPill');
+  if(p) p.hidden = !show;
+}
+
+// a message arrived after the initial history load
+function chatOnLive(m){
+  if(currentTab === 'chat'){
+    const list = document.getElementById('chatList');
+    if(list){
+      const stick = chatNearBottom(list) || m.cid === CHAT_CID;
+      chatAppend(list, m);
+      if(stick){ list.scrollTop = list.scrollHeight; chatShowNewPill(false); }
+      else chatShowNewPill(true);
+    }
+    if(document.visibilityState === 'visible') chatMarkSeen();
+  }
+  chatUpdateBadge();
+}
+
+// ---------- composer (handle picker + message box) ----------
+function chatGetHandle(){ return chatLsGet('chatHandle') || ''; }
+
+function chatRenderComposer(){
+  const box = document.getElementById('chatComposer');
+  if(!box) return;
+  const handle = chatGetHandle();
+
+  if(!handle || chatEditing){
+    box.innerHTML =
+      '<div class="card chat-join">' +
+        '<label for="chatHandleInput">PICK A HANDLE</label>' +
+        '<div class="chat-inputrow">' +
+          '<input type="text" id="chatHandleInput" maxlength="' + CHAT_MAX_NAME + '" placeholder="Your name or nickname" autocomplete="nickname" autocapitalize="words" enterkeyhint="go">' +
+          '<button class="btn" id="chatJoinBtn" type="button">' + (handle ? 'Save' : 'Join') + '</button>' +
+        '</div>' +
+      '</div>';
+    const hi = document.getElementById('chatHandleInput');
+    hi.value = handle;
+    const save = ()=>{
+      const v = hi.value.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_NAME);
+      if(!v){ hi.focus(); return; }
+      chatLsSet('chatHandle', v);
+      chatEditing = false;
+      chatRenderComposer();
+      const mi = document.getElementById('chatInput');
+      if(mi) mi.focus();
+    };
+    document.getElementById('chatJoinBtn').onclick = save;
+    hi.onkeydown = e=>{ if(e.key === 'Enter'){ e.preventDefault(); save(); } };
+    return;
+  }
+
+  box.innerHTML =
+    '<div class="chat-as">Posting as <b id="chatAsName"></b> · <button class="chat-link" id="chatChangeBtn" type="button">change</button></div>' +
+    '<div class="chat-inputrow">' +
+      '<input type="text" id="chatInput" maxlength="' + CHAT_MAX_TEXT + '" placeholder="Message…" autocomplete="off" enterkeyhint="send">' +
+      '<button class="btn" id="chatSendBtn" type="button">Send</button>' +
+    '</div>';
+  document.getElementById('chatAsName').textContent = handle;
+  const input = document.getElementById('chatInput');
+  input.value = chatDraft;
+  input.oninput = ()=>{ chatDraft = input.value; };
+  input.onkeydown = e=>{ if(e.key === 'Enter'){ e.preventDefault(); chatSend(); } };
+  const sendBtn = document.getElementById('chatSendBtn');
+  sendBtn.onmousedown = e=>e.preventDefault();   // keep the keyboard open on phones
+  sendBtn.onclick = chatSend;
+  document.getElementById('chatChangeBtn').onclick = ()=>{ chatEditing = true; chatRenderComposer(); const h = document.getElementById('chatHandleInput'); if(h){ h.focus(); h.select(); } };
+}
+
+async function chatSend(){
+  const input = document.getElementById('chatInput');
+  const name = chatGetHandle();
+  if(!input || !name || !fbDb) return;
+  const text = input.value.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_TEXT);
+  if(!text) return;
+  const now = Date.now();
+  if(now - chatLastSent < CHAT_COOLDOWN_MS) return;
+  chatLastSent = now;
+  input.value = '';
+  chatDraft = '';
+  input.focus();
+  try{
+    await fbDb.ref('chat').push({
+      name, text, cid: CHAT_CID,
+      ts: firebase.database.ServerValue.TIMESTAMP   // server clock, so everyone's timestamps agree
+    });
+  }catch(err){
+    console.error('chat send failed', err);
+    const cur = document.getElementById('chatInput');
+    if(cur && !cur.value){ cur.value = text; chatDraft = text; }
+    chatSetStatus(err && err.code === 'PERMISSION_DENIED'
+      ? 'Message rejected — chat rules may not be installed yet.'
+      : 'Could not send. Check your connection.', true);
+  }
+}
+
+// ---------- moderator (organizer password) ----------
+function chatRenderFoot(){
+  const foot = document.getElementById('chatFoot');
+  if(!foot) return;
+  const days = Math.round(CHAT_TTL_MS / 86400000);
+  if(!chatModerator){
+    foot.innerHTML = 'Messages auto-delete after ' + days + ' days. · <button class="chat-link" id="chatModBtn" type="button">Moderator</button>';
+    document.getElementById('chatModBtn').onclick = async ()=>{
+      try{ await ensureAdminSession(); }catch(e){ return; }
+      chatModerator = true;
+      chatRenderAll();
+      chatRenderFoot();
+    };
+  }else{
+    foot.innerHTML = '<b>Moderator mode</b> — tap × to delete a message. · ' +
+      '<button class="chat-link" id="chatClearBtn" type="button">Clear all</button> · ' +
+      '<button class="chat-link" id="chatModOff" type="button">Done</button>';
+    document.getElementById('chatModOff').onclick = ()=>{ chatModerator = false; chatRenderAll(); chatRenderFoot(); };
+    document.getElementById('chatClearBtn').onclick = async ()=>{
+      if(!confirm('Delete ALL chat messages for everyone?')) return;
+      try{ await withSession(ensureAdminSession, db=>db.ref('chat').remove()); }
+      catch(e){ chatSetStatus('Could not clear chat. Check organizer sign-in and rules.', true); }
+    };
+  }
+}
+
+async function chatDelete(key){
+  try{ await withSession(ensureAdminSession, db=>db.ref('chat/' + key).remove()); }
+  catch(e){ chatSetStatus('Could not delete. Check organizer sign-in and rules.', true); }
+}
+
+// ---------- mounting the tab ----------
+function mountChat(main){
+  if(BACKEND.mode !== 'firebase' || !fbDb){
+    main.innerHTML = '<div class="card"><div class="muted">Chat needs the Firebase backend.</div></div>';
+    return;
+  }
+  main.innerHTML =
+    '<div id="chatRoot">' +
+      '<h2 class="section-title">Chat</h2>' +
+      '<div class="chat-status" id="chatStatus" hidden></div>' +
+      '<div class="chat-wrap">' +
+        '<div class="chat-list" id="chatList" aria-live="polite"></div>' +
+        '<button class="chat-newpill" id="chatNewPill" type="button" hidden>New messages ↓</button>' +
+      '</div>' +
+      '<div id="chatComposer"></div>' +
+      '<div class="chat-foot" id="chatFoot"></div>' +
+    '</div>';
+
+  const list = document.getElementById('chatList');
+  list.addEventListener('scroll', ()=>{ if(chatNearBottom(list)) chatShowNewPill(false); });
+  list.addEventListener('click', e=>{
+    const b = e.target.closest('[data-chat-del]');
+    if(b) chatDelete(b.getAttribute('data-chat-del'));
+  });
+  document.getElementById('chatNewPill').onclick = ()=>{ list.scrollTop = list.scrollHeight; chatShowNewPill(false); };
+
+  chatSetStatus(chatErr);
+  chatRenderAll();
+  chatRenderComposer();
+  chatRenderFoot();
+  chatMarkSeen();
+}
+
+// ---------- live connection ----------
+// Removes messages older than CHAT_TTL_MS. Any device may do this: the Database
+// Rules only allow the public to delete messages that are already that old.
+async function chatCleanupOld(){
+  try{
+    for(let pass = 0; pass < 4; pass++){
+      const snap = await fbDb.ref('chat').orderByKey().limitToFirst(50).once('value');
+      const cutoff = Date.now() - CHAT_TTL_MS;
+      const updates = {};
+      let stale = 0, seen = 0;
+      snap.forEach(c=>{
+        seen++;
+        const v = c.val();
+        if(v && Number(v.ts) < cutoff){ updates[c.key] = null; stale++; }
+      });
+      if(stale) await fbDb.ref('chat').update(updates);
+      if(stale < 50 || seen < 50) break;
+    }
+  }catch(e){ /* housekeeping only — never blocks chat */ }
+}
+
+// The live connection only exists while chat is enabled (Setup → "Enable Chat tab").
+// chatApplyEnabled() is called from render() and opens or closes it as needed.
+let chatQuery = null;          // active /chat query, or null while chat is off
+let chatVisHooked = false;
+
+function chatFail(err){
+  if(!chatQuery) return;
+  console.error('chat listener error', err);
+  chatSetStatus('Chat is not set up yet (database rules for /chat are missing).');
+  const list = document.getElementById('chatList');
+  if(list && !chatMsgs.size){ list.innerHTML = ''; }
+}
+
+function chatOnChildAdded(snap){
+  const m = chatSanitize(snap.key, snap.val());
+  if(!m) return;
+  chatMsgs.set(m.key, m);
+  if(chatLoaded) chatOnLive(m);
+}
+
+function chatOnChildRemoved(snap){
+  chatMsgs.delete(snap.key);
+  const list = document.getElementById('chatList');
+  if(list){
+    const el = list.querySelector('[data-chat-key="' + snap.key + '"]');
+    if(el) el.remove();
+    if(!chatMsgs.size && !list.querySelector('.chat-empty')) chatEmptyState(list);
+  }
+  chatUpdateBadge();
+}
+
+function chatStart(){
+  if(chatQuery || BACKEND.mode !== 'firebase' || !fbDb) return;
+  const q = fbDb.ref('chat').orderByKey().limitToLast(CHAT_KEEP);
+  chatQuery = q;
+  q.on('child_added', chatOnChildAdded, chatFail);
+  q.on('child_removed', chatOnChildRemoved);
+
+  // Fires after the initial batch of child_added events has been delivered.
+  q.once('value', ()=>{
+    if(chatQuery !== q) return;                  // chat was switched off before the first load finished
+    chatLoaded = true;
+    if(chatSeen === null){                       // first visit: don't badge the whole backlog
+      chatSeen = chatLatestTs() || Date.now();
+      chatLsSet('chatLastSeen', String(chatSeen));
+    }
+    if(currentTab === 'chat'){ chatRenderAll(); chatMarkSeen(); }
+    chatUpdateBadge();
+    chatCleanupOld();
+  }, chatFail);
+
+  if(!chatVisHooked){
+    chatVisHooked = true;
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState === 'visible' && currentTab === 'chat') chatMarkSeen();
+    });
+  }
+}
+
+function chatStop(){
+  if(!chatQuery) return;
+  chatQuery.off('child_added', chatOnChildAdded);
+  chatQuery.off('child_removed', chatOnChildRemoved);
+  chatQuery = null;
+  chatMsgs.clear();
+  chatLoaded = false;
+  chatErr = '';
+  chatModerator = false;
+  chatEditing = false;
+  chatUpdateBadge();
+}
+
+// Shows/hides the CHAT tab button and opens/closes the live connection.
+function chatApplyEnabled(on){
+  const btn = document.querySelector('nav.tabs button[data-tab="chat"]');
+  if(btn) btn.hidden = !on;
+  if(on) chatStart(); else chatStop();
+}
+
+loadState();
+if(BACKEND.mode !== 'firebase'){
+  pollTimer = setInterval(pollForUpdates, 4000);
+}
+</script>
+</body>
+</html>
