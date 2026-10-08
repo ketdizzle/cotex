@@ -1249,34 +1249,52 @@ function roundNetTotal(roundId, player){
   return {total, count, toPar};
 }
 
-// --- Individual Sixes: rotating 1-on-1 net-score matchups within a group of 2-4 ---
+// --- Individual Sixes: 1-on-1 net-score matchups within a group of 2-4, set directly
+// per 6-hole section (holes 1-6, 7-12, 13-18) via the Matchup Schedule in Setup. ---
+
+// The schedule's fallback when a segment hasn't been explicitly set (new group, or a
+// player just added/removed). For 4 players this honors the legacy partnerOrder field
+// from older saved data so existing schedules don't change until edited; otherwise it's
+// a plain round robin so every player in a group of 2 or 3 gets paired against everyone else.
+function defaultSegmentPair(quad, filled, segIdx){
+  const n = filled.length;
+  if(n < 2) return {a:'', b:''};
+  if(n === 2) return {a:filled[0], b:filled[1]};
+  if(n === 3){
+    const order = [[0,1],[0,2],[1,2]];
+    const [i,j] = order[segIdx % 3];
+    return {a:filled[i], b:filled[j]};
+  }
+  // n === 4
+  const partnerOrder = Array.isArray(quad.partnerOrder) ? quad.partnerOrder : [2,3,1];
+  const partnerSlot = partnerOrder[segIdx] || [2,3,1][segIdx];
+  return {a: filled[0], b: quad.players[partnerSlot] || filled[1]};
+}
+
+// Resolves the organizer-set (or default) pair for one 6-hole segment of a group.
+function resolveMatchupPair(quad, segIdx){
+  const filled = quad.players.filter(Boolean);
+  const n = filled.length;
+  if(n < 2) return {a:'', b:''};
+  const stored = (quad.matchups && quad.matchups[segIdx]) || {};
+  const a = stored.a, b = stored.b;
+  if(a && b && a!==b && filled.includes(a) && filled.includes(b)) return {a,b};
+  return defaultSegmentPair(quad, filled, segIdx);
+}
+
 // Groups no longer need to be a full foursome: 2, 3 or 4 players all work.
-// 4 players: partnerOrder[segment] = which slot (1,2,or3) pairs with slot 0 during
-//   that 6-hole segment; the other two slots automatically pair with each other
-//   (organizer-configurable in Setup, covers all 6 possible pairs across 3 segments).
-// 3 players: each segment is a different one of the 3 possible pairs, the third
-//   player sits out that segment (automatic, no configuration needed).
-// 2 players: the same single pair plays all three 6-hole segments.
-// 1 or 0 players: no matches.
+// Returns the active pair(s) for a 6-hole segment: one pair for groups of 2-3
+// (anyone left over sits that segment out), two simultaneous pairs for a group of 4.
 function quadPairsForSegment(quad, segIdx){
   const filled = quad.players.filter(Boolean);
   const n = filled.length;
   if(n < 2) return [];
-  if(n === 4){
-    const partnerSlot = quad.partnerOrder[segIdx];
-    const otherSlots = [1,2,3].filter(s=>s!==partnerSlot);
-    return [
-      [quad.players[0], quad.players[partnerSlot]],
-      [quad.players[otherSlots[0]], quad.players[otherSlots[1]]]
-    ];
-  }
-  if(n === 3){
-    const pairsOrder = [[0,1],[0,2],[1,2]];
-    const [i,j] = pairsOrder[segIdx % 3];
-    return [[filled[i], filled[j]]];
-  }
-  // n === 2
-  return [[filled[0], filled[1]]];
+  const {a,b} = resolveMatchupPair(quad, segIdx);
+  if(!a || !b) return [];
+  if(n <= 3) return [[a,b]];
+  const rest = filled.filter(p=>p!==a && p!==b);
+  if(rest.length < 2) return [[a,b]];
+  return [[a,b], [rest[0], rest[1]]];
 }
 
 function netHoleScore(round, player, hole){
@@ -2367,7 +2385,8 @@ function renderSetup(){
         html += `<p class="muted" style="margin-top:0;">Leave a slot on "— select player —" if you don't have a 4th yet — a group works fine with just 2 or 3 players. Add the 4th later and the matchups below update automatically.</p>`;
       }
       (round.quads||[]).forEach((quad, qi)=>{
-        const n = quad.players.filter(Boolean).length;
+        const filled = quad.players.filter(Boolean);
+        const n = filled.length;
         const needsAll4 = round.format==='trad6';
         html += `<div class="group-box">
           <div class="group-label">${groupWord} ${qi+1} <button class="remove-x" data-remove-quad="${round.id}:${qi}" style="float:right;">&times;</button></div>
@@ -2377,24 +2396,29 @@ function renderSetup(){
               ${sortedPlayers().map(p=>`<option value="${escapeAttr(p.name)}" ${quad.players[slot]===p.name?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
             </select>
           `).join('')}
-          <label style="margin-top:8px;">Matchup schedule</label>
-          ${(needsAll4 && n<4) ? `<div class="muted" style="margin-bottom:6px;">Select all 4 players above to see the matchup schedule.</div>` :
-            (n<2) ? `<div class="muted" style="margin-bottom:6px;">Select at least 2 players above to see the matchup schedule.</div>` :
+          <label style="margin-top:10px;">Matchup Schedule — pick who plays whom each section</label>
+          ${(needsAll4 && n<4) ? `<div class="muted" style="margin-bottom:6px;">Select all 4 players above to set the matchup schedule.</div>` :
+            (n<2) ? `<div class="muted" style="margin-bottom:6px;">Select at least 2 players above to set the matchup schedule.</div>` :
             [0,1,2].map(seg=>{
-              const pairs = quadPairsForSegment(quad, seg);
-              const filledSlots = quad.players.filter(Boolean);
-              const sittingOut = n===3 ? filledSlots.filter(name=> !pairs[0].includes(name)) : [];
+              const {a,b} = resolveMatchupPair(quad, seg);
               const holeRange = `${seg*6+1}-${seg*6+6}`;
-              const matchupText = pairs.length===2
-                ? `${escapeHtml(pairs[0][0])} vs ${escapeHtml(pairs[0][1])} &nbsp;|&nbsp; ${escapeHtml(pairs[1][0])} vs ${escapeHtml(pairs[1][1])}`
-                : `${escapeHtml(pairs[0][0])} vs ${escapeHtml(pairs[0][1])}${sittingOut.length ? ` &nbsp;|&nbsp; <span class="muted">${escapeHtml(sittingOut[0])} sits out</span>` : ''}`;
-              return `<div class="muted" style="margin-bottom:6px;">
-                Holes ${holeRange}: ${matchupText}
-                ${n===4 ? `<select data-quad-partner="${round.id}:${qi}:${seg}" style="margin-top:4px;">
-                  <option value="1" ${quad.partnerOrder[seg]===1?'selected':''}>Slot 1 pairs with Slot 2</option>
-                  <option value="2" ${quad.partnerOrder[seg]===2?'selected':''}>Slot 1 pairs with Slot 3</option>
-                  <option value="3" ${quad.partnerOrder[seg]===3?'selected':''}>Slot 1 pairs with Slot 4</option>
-                </select>` : ''}
+              const rest = filled.filter(p=>p!==a && p!==b);
+              const extraLine = n===4
+                ? (rest.length===2 ? `<div class="muted" style="margin-top:6px;">Match 2 (auto): ${escapeHtml(rest[0])} vs ${escapeHtml(rest[1])}</div>` : '')
+                : (n===3 && rest.length===1 ? `<div class="muted" style="margin-top:6px;">${escapeHtml(rest[0])} sits out</div>` : '');
+              return `<div style="border:1px solid var(--board-line); border-radius:var(--radius); padding:10px; margin-bottom:8px;">
+                <div class="muted" style="font-family:'Oswald',sans-serif; letter-spacing:0.04em; font-size:12px; text-transform:uppercase; margin-bottom:6px;">Holes ${holeRange}</div>
+                <div class="row-flex">
+                  <select data-quad-matchup="${round.id}:${qi}:${seg}:a">
+                    <option value="">— player 1 —</option>
+                    ${filled.map(name=>`<option value="${escapeAttr(name)}" ${a===name?'selected':''}>${escapeHtml(name)}</option>`).join('')}
+                  </select>
+                  <select data-quad-matchup="${round.id}:${qi}:${seg}:b">
+                    <option value="">— player 2 —</option>
+                    ${filled.map(name=>`<option value="${escapeAttr(name)}" ${b===name?'selected':''}>${escapeHtml(name)}</option>`).join('')}
+                  </select>
+                </div>
+                ${extraLine}
               </div>`;
             }).join('')}
         </div>`;
@@ -2759,13 +2783,13 @@ function attachHandlers(){
     });
     document.querySelectorAll('[data-add-quad]').forEach(btn=>{
       btn.onclick = async ()=>{
-        getRound(btn.dataset.addQuad).quads.push({ players:['','','',''], partnerOrder:[2,3,1] });
+        getRound(btn.dataset.addQuad).quads.push({ players:['','','',''], matchups:[{a:'',b:''},{a:'',b:''},{a:'',b:''}] });
         await saveState(); render();
       };
     });
     document.querySelectorAll('[data-remove-quad]').forEach(btn=>{
       btn.onclick = async ()=>{
-        if(!confirm('Remove this foursome and its matchups?')) return;
+        if(!confirm('Remove this group and its matchups?')) return;
         const [rid, qi] = btn.dataset.removeQuad.split(':');
         getRound(rid).quads.splice(Number(qi),1);
         await saveState(); render();
@@ -2778,10 +2802,20 @@ function attachHandlers(){
         await saveState(); render();
       };
     });
-    document.querySelectorAll('[data-quad-partner]').forEach(sel=>{
+    document.querySelectorAll('[data-quad-matchup]').forEach(sel=>{
       sel.onchange = async ()=>{
-        const [rid, qi, seg] = sel.dataset.quadPartner.split(':');
-        getRound(rid).quads[Number(qi)].partnerOrder[Number(seg)] = Number(sel.value);
+        const [rid, qi, seg, side] = sel.dataset.quadMatchup.split(':');
+        const quad = getRound(rid).quads[Number(qi)];
+        if(!Array.isArray(quad.matchups)) quad.matchups = [{a:'',b:''},{a:'',b:''},{a:'',b:''}];
+        if(!quad.matchups[Number(seg)]) quad.matchups[Number(seg)] = {a:'',b:''};
+        const segPair = quad.matchups[Number(seg)];
+        const otherSide = side==='a' ? 'b' : 'a';
+        if(sel.value && sel.value === segPair[otherSide]){
+          alert('That player is already set on the other side of this match — pick someone else.');
+          render();
+          return;
+        }
+        segPair[side] = sel.value;
         await saveState(); render();
       };
     });
