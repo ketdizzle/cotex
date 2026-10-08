@@ -1249,16 +1249,34 @@ function roundNetTotal(roundId, player){
   return {total, count, toPar};
 }
 
-// --- Individual Sixes: rotating 1-on-1 net-score matchups within a foursome ---
-// partnerOrder[segment] = which slot (1,2,or3) pairs with slot 0 during that 6-hole segment.
-// The other two slots automatically pair with each other.
+// --- Individual Sixes: rotating 1-on-1 net-score matchups within a group of 2-4 ---
+// Groups no longer need to be a full foursome: 2, 3 or 4 players all work.
+// 4 players: partnerOrder[segment] = which slot (1,2,or3) pairs with slot 0 during
+//   that 6-hole segment; the other two slots automatically pair with each other
+//   (organizer-configurable in Setup, covers all 6 possible pairs across 3 segments).
+// 3 players: each segment is a different one of the 3 possible pairs, the third
+//   player sits out that segment (automatic, no configuration needed).
+// 2 players: the same single pair plays all three 6-hole segments.
+// 1 or 0 players: no matches.
 function quadPairsForSegment(quad, segIdx){
-  const partnerSlot = quad.partnerOrder[segIdx];
-  const otherSlots = [1,2,3].filter(s=>s!==partnerSlot);
-  return [
-    [quad.players[0], quad.players[partnerSlot]],
-    [quad.players[otherSlots[0]], quad.players[otherSlots[1]]]
-  ];
+  const filled = quad.players.filter(Boolean);
+  const n = filled.length;
+  if(n < 2) return [];
+  if(n === 4){
+    const partnerSlot = quad.partnerOrder[segIdx];
+    const otherSlots = [1,2,3].filter(s=>s!==partnerSlot);
+    return [
+      [quad.players[0], quad.players[partnerSlot]],
+      [quad.players[otherSlots[0]], quad.players[otherSlots[1]]]
+    ];
+  }
+  if(n === 3){
+    const pairsOrder = [[0,1],[0,2],[1,2]];
+    const [i,j] = pairsOrder[segIdx % 3];
+    return [[filled[i], filled[j]]];
+  }
+  // n === 2
+  return [[filled[0], filled[1]]];
 }
 
 function netHoleScore(round, player, hole){
@@ -1274,7 +1292,7 @@ function sixesTotalsForRound(roundId){
   const totals = {};
   state.players.forEach(p=>totals[p.name]=0);
   (round.quads||[]).forEach(quad=>{
-    if(quad.players.filter(Boolean).length !== 4) return;
+    if(quad.players.filter(Boolean).length < 2) return;
     for(let seg=0; seg<3; seg++){
       const pairs = quadPairsForSegment(quad, seg);
       const holeStart = seg*6+1, holeEnd = seg*6+6;
@@ -1731,9 +1749,9 @@ function renderLeaderboard(){
       const totals = sixesTotalsForRound(round.id);
       const rows = state.players.map(p=>({name:p.name, pts: totals[p.name]||0}))
         .sort((a,b)=>b.pts-a.pts);
-      const hasGroups = (round.quads||[]).some(q=>q.players.filter(Boolean).length===4);
+      const hasGroups = (round.quads||[]).some(q=>q.players.filter(Boolean).length>=2);
 
-      const validQuads = (round.quads||[]).filter(q=>q.players.filter(Boolean).length===4);
+      const validQuads = (round.quads||[]).filter(q=>q.players.filter(Boolean).length>=1);
       const groupsHtml = lbSection(`round-${round.id}-sixes-groups`, `${escapeHtml(round.label)} — Individual Sixes Points · Groups`, `
         <p class="muted" style="margin:-6px 0 12px;">(note: <strong>GROSS</strong> score will be used as a tie breaker)</p>
         ${validQuads.length ? validQuads.map((quad, qi)=>{
@@ -1758,7 +1776,7 @@ function renderLeaderboard(){
                 </div>`).join('')}
             </div>
           </div>`;
-        }).join('') : `<div class="card"><div class="muted">Set up your foursomes for this round in Setup to see points.</div></div>`}`);
+        }).join('') : `<div class="card"><div class="muted">Set up your groups for this round in Setup to see points.</div></div>`}`);
 
       const pointsHtml = lbSection(`round-${round.id}-sixes-points`, `${escapeHtml(round.label)} — Individual Sixes Points`, `
         <p class="muted" style="margin:-6px 0 12px;">(note: <strong>GROSS</strong> score will be used as a tie breaker)</p>
@@ -1768,7 +1786,7 @@ function renderLeaderboard(){
             <span class="lb-rank">${i+1}</span>
             <span class="lb-name">${escapeHtml(r.name)}</span>
             <span class="lb-score">${r.pts}</span>
-          </div>`).join('') : `<div class="muted">Set up your foursomes for this round in Setup to see points.</div>`}
+          </div>`).join('') : `<div class="muted">Set up your groups (at least 2 players) for this round in Setup to see points.</div>`}
         </div>`);
 
       const st = round.sixesTeams || { a:['','',''], b:['','',''] };
@@ -2339,12 +2357,20 @@ function renderSetup(){
     if(round.format==='sixes' || round.format==='trad6'){
       const quadsKey = `${round.id}-quads`;
       if(!(quadsKey in uiDetailsState)) uiDetailsState[quadsKey] = true;
-      html += `<details data-details-key="${quadsKey}" ${uiDetailsState[quadsKey] ? 'open' : ''}><summary>Foursomes for ${escapeHtml(round.label)} (${round.format==='trad6' ? 'round robin 2v2 matches, 1 pt win / ½ tie' : 'rotating 1-on-1, net score, 2/1/0 per hole'})</summary><div class="card">`;
+      const groupWord = round.format==='sixes' ? 'Group' : 'Foursome';
+      const summaryNote = round.format==='trad6'
+        ? 'round robin 2v2 matches, 1 pt win / ½ tie — needs all 4 players'
+        : 'rotating 1-on-1, net score, 2/1/0 per hole — works with 2, 3 or 4 players';
+      html += `<details data-details-key="${quadsKey}" ${uiDetailsState[quadsKey] ? 'open' : ''}><summary>${groupWord}s for ${escapeHtml(round.label)} (${summaryNote})</summary><div class="card">`;
       html += `<button class="btn secondary" data-autofill-quads="${round.id}" style="margin-bottom:12px;">Load Round 1 Roster &amp; Matchups</button>`;
+      if(round.format==='sixes'){
+        html += `<p class="muted" style="margin-top:0;">Leave a slot on "— select player —" if you don't have a 4th yet — a group works fine with just 2 or 3 players. Add the 4th later and the matchups below update automatically.</p>`;
+      }
       (round.quads||[]).forEach((quad, qi)=>{
-        const filled = quad.players.filter(Boolean).length === 4;
+        const n = quad.players.filter(Boolean).length;
+        const needsAll4 = round.format==='trad6';
         html += `<div class="group-box">
-          <div class="group-label">Foursome ${qi+1} <button class="remove-x" data-remove-quad="${round.id}:${qi}" style="float:right;">&times;</button></div>
+          <div class="group-label">${groupWord} ${qi+1} <button class="remove-x" data-remove-quad="${round.id}:${qi}" style="float:right;">&times;</button></div>
           ${[0,1,2,3].map(slot=>`
             <select data-quad-slot="${round.id}:${qi}:${slot}">
               <option value="">— select player —</option>
@@ -2352,21 +2378,28 @@ function renderSetup(){
             </select>
           `).join('')}
           <label style="margin-top:8px;">Matchup schedule</label>
-          ${[0,1,2].map(seg=>{
-            const pairs = filled ? quadPairsForSegment(quad, seg) : null;
-            const holeRange = `${seg*6+1}-${seg*6+6}`;
-            return `<div class="muted" style="margin-bottom:6px;">
-              Holes ${holeRange}: ${pairs ? `${escapeHtml(pairs[0][0])} vs ${escapeHtml(pairs[0][1])} &nbsp;|&nbsp; ${escapeHtml(pairs[1][0])} vs ${escapeHtml(pairs[1][1])}` : 'select all 4 players above'}
-              <select data-quad-partner="${round.id}:${qi}:${seg}" style="margin-top:4px;">
-                <option value="1" ${quad.partnerOrder[seg]===1?'selected':''}>Slot 1 pairs with Slot 2</option>
-                <option value="2" ${quad.partnerOrder[seg]===2?'selected':''}>Slot 1 pairs with Slot 3</option>
-                <option value="3" ${quad.partnerOrder[seg]===3?'selected':''}>Slot 1 pairs with Slot 4</option>
-              </select>
-            </div>`;
-          }).join('')}
+          ${(needsAll4 && n<4) ? `<div class="muted" style="margin-bottom:6px;">Select all 4 players above to see the matchup schedule.</div>` :
+            (n<2) ? `<div class="muted" style="margin-bottom:6px;">Select at least 2 players above to see the matchup schedule.</div>` :
+            [0,1,2].map(seg=>{
+              const pairs = quadPairsForSegment(quad, seg);
+              const filledSlots = quad.players.filter(Boolean);
+              const sittingOut = n===3 ? filledSlots.filter(name=> !pairs[0].includes(name)) : [];
+              const holeRange = `${seg*6+1}-${seg*6+6}`;
+              const matchupText = pairs.length===2
+                ? `${escapeHtml(pairs[0][0])} vs ${escapeHtml(pairs[0][1])} &nbsp;|&nbsp; ${escapeHtml(pairs[1][0])} vs ${escapeHtml(pairs[1][1])}`
+                : `${escapeHtml(pairs[0][0])} vs ${escapeHtml(pairs[0][1])}${sittingOut.length ? ` &nbsp;|&nbsp; <span class="muted">${escapeHtml(sittingOut[0])} sits out</span>` : ''}`;
+              return `<div class="muted" style="margin-bottom:6px;">
+                Holes ${holeRange}: ${matchupText}
+                ${n===4 ? `<select data-quad-partner="${round.id}:${qi}:${seg}" style="margin-top:4px;">
+                  <option value="1" ${quad.partnerOrder[seg]===1?'selected':''}>Slot 1 pairs with Slot 2</option>
+                  <option value="2" ${quad.partnerOrder[seg]===2?'selected':''}>Slot 1 pairs with Slot 3</option>
+                  <option value="3" ${quad.partnerOrder[seg]===3?'selected':''}>Slot 1 pairs with Slot 4</option>
+                </select>` : ''}
+              </div>`;
+            }).join('')}
         </div>`;
       });
-      html += `<button class="btn secondary" data-add-quad="${round.id}">Add Foursome</button></div></details>`;
+      html += `<button class="btn secondary" data-add-quad="${round.id}">Add ${groupWord}</button></div></details>`;
     }
 
     if(round.format==='sixes'){
@@ -2597,15 +2630,15 @@ function attachHandlers(){
     document.querySelectorAll('[data-copy-quads-to-teegroups]').forEach(btn=>{
       btn.onclick = async ()=>{
         const round = getRound(btn.dataset.copyQuadsToTeegroups);
-        const validQuads = (round.quads||[]).filter(q=>q.players.filter(Boolean).length===4);
+        const validQuads = (round.quads||[]).filter(q=>q.players.filter(Boolean).length>=1);
         if(!validQuads.length){
-          alert('This round\'s foursomes aren\'t set up yet — use "Load Round 1 Roster & Matchups" first, or build Tee Groups manually below.');
+          alert('This round\'s groups aren\'t set up yet — use "Load Round 1 Roster & Matchups" first, or build Tee Groups manually below.');
           return;
         }
         round.teeGroups = validQuads.map((q,i)=>({
           id: 'teegroup-' + Date.now() + '-' + i,
           name: `Group ${i+1}`,
-          players: q.players.slice()
+          players: [0,1,2,3].map(slot=> q.players[slot] || '')
         }));
         await saveState(); render();
       };
