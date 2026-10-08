@@ -699,6 +699,7 @@ function defaultState(){
         useCourseHandicap: null, // null = inherit tournament default; true/false = override for this round
         handicapOverrides: {}, // { playerName: number } — per-round handicap adjustment, defaults to player's base handicap if unset
         groups: [], quads: [], pairs: [], teeGroups: [],
+        sixesTeams: { aName: '', bName: '', a: ['','',''], b: ['','',''] },
         kpHoles: ROUND_KP_LD_DEFAULTS.r1.kp.slice(), ldHoles: ROUND_KP_LD_DEFAULTS.r1.ld.slice()
       },
       {
@@ -1084,7 +1085,13 @@ function normalizeState(s){
     shambleTeams: Array.isArray(r.shambleTeams) ? r.shambleTeams.map(t=>({
       id: (t && t.id) || ('st-' + Math.random().toString(36).slice(2)),
       players: (t && Array.isArray(t.players)) ? t.players : []
-    })) : []
+    })) : [],
+    sixesTeams: {
+      aName: (r.sixesTeams && r.sixesTeams.aName) || '',
+      bName: (r.sixesTeams && r.sixesTeams.bName) || '',
+      a: (r.sixesTeams && Array.isArray(r.sixesTeams.a)) ? [0,1,2].map(i=>r.sixesTeams.a[i]||'') : ['','',''],
+      b: (r.sixesTeams && Array.isArray(r.sixesTeams.b)) ? [0,1,2].map(i=>r.sixesTeams.b[i]||'') : ['','','']
+    }
   }));
   if(!s.scores || typeof s.scores !== 'object') s.scores = {};
   if(!s.kp || typeof s.kp !== 'object') s.kp = {};
@@ -1284,6 +1291,20 @@ function sixesTotalsForRound(roundId){
     }
   });
   return totals;
+}
+
+// Team Sixes Leaderboard: 2 teams of 3, each team's total = sum of its players'
+// Individual Sixes points (from sixesTotalsForRound above). Team names/rosters
+// are set in Setup; this is purely a dynamic rollup, not a separate scoring system.
+function sixesTeamTotals(roundId){
+  const round = getRound(roundId);
+  const totals = sixesTotalsForRound(roundId);
+  const st = round.sixesTeams || { aName:'', bName:'', a:['','',''], b:['','',''] };
+  const sumTeam = (list)=> (list||[]).reduce((sum, name)=> name ? sum + (totals[name]||0) : sum, 0);
+  return [
+    { side:'a', label: st.aName || 'Team 1', players: st.a||['','',''], pts: sumTeam(st.a) },
+    { side:'b', label: st.bName || 'Team 2', players: st.b||['','',''], pts: sumTeam(st.b) }
+  ];
 }
 
 // --- Team Pairs: best-ball gross + best-ball net, per hole, summed over the round ---
@@ -1750,7 +1771,21 @@ function renderLeaderboard(){
           </div>`).join('') : `<div class="muted">Set up your foursomes for this round in Setup to see points.</div>`}
         </div>`);
 
-      sixesHtml = `${groupsHtml}${pointsHtml}`;
+      const st = round.sixesTeams || { a:['','',''], b:['','',''] };
+      const hasTeamRosters = (st.a||[]).some(Boolean) || (st.b||[]).some(Boolean);
+      const teamTotals = sixesTeamTotals(round.id).sort((a,b)=>b.pts-a.pts);
+      const teamHtml = lbSection(`round-${round.id}-sixes-teams`, `${escapeHtml(round.label)} — Team Sixes Leaderboard`, `
+        <div class="card">
+        ${hasTeamRosters ? teamTotals.map((t,i)=>`
+          <div class="lb-row">
+            <span class="lb-rank">${i+1}</span>
+            <span class="lb-name">${escapeHtml(t.label)}<br><span class="hcp">${t.players.filter(Boolean).map(n=>escapeHtml(n)).join(', ') || 'no players set'}</span></span>
+            <span class="lb-score">${t.pts}</span>
+          </div>`).join('') : `<div class="muted">Set up your two teams of 3 for this round in Setup to see the team leaderboard.</div>`}
+        </div>
+        <p class="muted">Each team's total is the sum of its 3 players' Individual Sixes points, below.</p>`);
+
+      sixesHtml = `${teamHtml}${groupsHtml}${pointsHtml}`;
     }
 
     let pairsHtml = '';
@@ -2334,6 +2369,29 @@ function renderSetup(){
       html += `<button class="btn secondary" data-add-quad="${round.id}">Add Foursome</button></div></details>`;
     }
 
+    if(round.format==='sixes'){
+      const st = round.sixesTeams || { aName:'', bName:'', a:['','',''], b:['','',''] };
+      const sixteamsKey = `${round.id}-sixesteams`;
+      if(!(sixteamsKey in uiDetailsState)) uiDetailsState[sixteamsKey] = true;
+      const sixTeamBlock = (side, defaultLabel)=>`
+        <div class="group-box">
+          <div class="group-label">${defaultLabel}</div>
+          <label>Team name</label>
+          <input type="text" data-sixteam-name="${round.id}|${side}" value="${escapeAttr(side==='a'?st.aName:st.bName)}" placeholder="${defaultLabel}">
+          ${[0,1,2].map(slot=>`
+            <select data-sixteam-slot="${round.id}:${side}:${slot}">
+              <option value="">— select player —</option>
+              ${sortedPlayers().map(p=>`<option value="${escapeAttr(p.name)}" ${st[side][slot]===p.name?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+            </select>
+          `).join('')}
+        </div>`;
+      html += `<details data-details-key="${sixteamsKey}" ${uiDetailsState[sixteamsKey] ? 'open' : ''}><summary>Team Sixes for ${escapeHtml(round.label)} (2 teams of 3, totals its players' Individual Sixes points)</summary><div class="card">
+        <p class="muted" style="margin-top:0;">Pick 3 players for each team. The Board will show a Team Sixes leaderboard that's just the sum of each player's Individual Sixes points above — no separate scoring.</p>
+        ${sixTeamBlock('a','Team 1')}
+        ${sixTeamBlock('b','Team 2')}
+      </div></details>`;
+    }
+
     html += renderGameSettings(round);
 
     if(round.format==='pairs'){
@@ -2799,6 +2857,24 @@ function attachHandlers(){
       sel.onchange = async ()=>{
         const [rid, side, slot] = sel.dataset.rySlot.split(':');
         const list = getRound(rid).ryder[side];
+        while(list.length <= Number(slot)) list.push('');
+        list[Number(slot)] = sel.value;
+        await saveState(); render();
+      };
+    });
+
+    document.querySelectorAll('[data-sixteam-name]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        const [rid, side] = inp.dataset.sixteamName.split('|');
+        const st = getRound(rid).sixesTeams;
+        if(side==='a') st.aName = inp.value.trim(); else st.bName = inp.value.trim();
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-sixteam-slot]').forEach(sel=>{
+      sel.onchange = async ()=>{
+        const [rid, side, slot] = sel.dataset.sixteamSlot.split(':');
+        const list = getRound(rid).sixesTeams[side];
         while(list.length <= Number(slot)) list.push('');
         list[Number(slot)] = sel.value;
         await saveState(); render();
