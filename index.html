@@ -1091,6 +1091,13 @@ function normalizeState(s){
       bName: (r.sixesTeams && r.sixesTeams.bName) || '',
       a: (r.sixesTeams && Array.isArray(r.sixesTeams.a)) ? [0,1,2].map(i=>r.sixesTeams.a[i]||'') : ['','',''],
       b: (r.sixesTeams && Array.isArray(r.sixesTeams.b)) ? [0,1,2].map(i=>r.sixesTeams.b[i]||'') : ['','','']
+    },
+    stablefordTeams: {
+      aName: (r.stablefordTeams && r.stablefordTeams.aName) || 'Team 1',
+      bName: (r.stablefordTeams && r.stablefordTeams.bName) || 'Team 2',
+      size: (r.stablefordTeams && Number(r.stablefordTeams.size)) || 3,
+      a: (r.stablefordTeams && Array.isArray(r.stablefordTeams.a)) ? r.stablefordTeams.a : [],
+      b: (r.stablefordTeams && Array.isArray(r.stablefordTeams.b)) ? r.stablefordTeams.b : []
     }
   }));
   if(!s.scores || typeof s.scores !== 'object') s.scores = {};
@@ -1479,6 +1486,21 @@ function stablefordTotals(roundId){
   });
 }
 
+// Team Stableford Leaderboard: each team's score is the sum of its players'
+// (net) Stableford points from stablefordTotals above — a dynamic rollup,
+// not a separate scoring system. Teams and roster size are set in Setup.
+function stablefordTeamTotals(roundId){
+  const round = getRound(roundId);
+  const totals = {};
+  stablefordTotals(roundId).forEach(r=>{ totals[r.name] = r.pts; });
+  const st = round.stablefordTeams || { aName:'Team 1', bName:'Team 2', a:[], b:[] };
+  const sumTeam = (list)=> (list||[]).reduce((sum, name)=> name ? sum + (totals[name]||0) : sum, 0);
+  return [
+    { side:'a', label: st.aName || 'Team 1', players: (st.a||[]).filter(Boolean), pts: sumTeam(st.a) },
+    { side:'b', label: st.bName || 'Team 2', players: (st.b||[]).filter(Boolean), pts: sumTeam(st.b) }
+  ];
+}
+
 // Head-to-head match between two players, net of pct% of handicap.
 // Returns the running margin (positive = a is up), holes played, and whether the match is over.
 function matchStatus(round, a, b, pct){
@@ -1600,6 +1622,7 @@ function gameBoardHtml(round){
       <p class="muted">Points: Bingo ${pts.green}, Bango ${pts.closest}, Bongo ${pts.first}. Ties and blank picks score no point. Picks are entered under Enter Scores → By Hole.</p>`;
   }
 
+  let stablefordTeamHtml = '';
   if(round.format==='stableford'){
     const rows = stablefordTotals(round.id).sort((a,b)=> (a.count===0)-(b.count===0) || b.pts-a.pts);
     body = `<div class="card">${rows.map((r,i)=>`
@@ -1609,6 +1632,20 @@ function gameBoardHtml(round){
           <span class="lb-score ${r.count===0?'dim':''}">${r.count===0?'—':r.pts}</span>
         </div>`).join('')}</div>
       <p class="muted">Net score (${gsNum(round,'stablefordPct',100)}% of handicap) against par. Highest points wins.</p>`;
+
+    const st = round.stablefordTeams || { aName:'Team 1', bName:'Team 2', a:[], b:[] };
+    const hasTeamRosters = (st.a||[]).some(Boolean) || (st.b||[]).some(Boolean);
+    const teamTotals = stablefordTeamTotals(round.id).sort((a,b)=>b.pts-a.pts);
+    stablefordTeamHtml = lbSection(`round-${round.id}-stableford-teams`, `${escapeHtml(round.label)} — Team Stableford Leaderboard`, `
+      <div class="card">
+      ${hasTeamRosters ? teamTotals.map((t,i)=>`
+        <div class="lb-row">
+          <span class="lb-rank">${i+1}</span>
+          <span class="lb-name">${escapeHtml(t.label)}<br><span class="hcp">${t.players.map(n=>escapeHtml(n)).join(', ') || 'no players set'}</span></span>
+          <span class="lb-score">${fmtPts(t.pts)}</span>
+        </div>`).join('') : `<div class="muted">Set up your two teams for this round in Setup to see the team leaderboard.</div>`}
+      </div>
+      <p class="muted">Each team's total is the sum of its players' (net) Stableford points, below.</p>`);
   }
 
   if(round.format==='matchplay'){
@@ -1640,7 +1677,7 @@ function gameBoardHtml(round){
       : `<div class="muted">Set up both teams for this round in Setup to see the match.</div>`;
   }
 
-  return lbSection(`round-${round.id}-game`, title, body);
+  return `${stablefordTeamHtml}${lbSection(`round-${round.id}-game`, title, body)}`;
 }
 
 function render(){
@@ -2442,6 +2479,34 @@ function renderSetup(){
       </div></details>`;
     }
 
+    if(round.format==='stableford'){
+      const stt = round.stablefordTeams || { aName:'Team 1', bName:'Team 2', size:3, a:[], b:[] };
+      const sfSize = Number(stt.size) || 3;
+      const sfteamsKey = `${round.id}-stablefordteams`;
+      if(!(sfteamsKey in uiDetailsState)) uiDetailsState[sfteamsKey] = true;
+      const sfTeamBlock = (side, defaultLabel)=>`
+        <div class="group-box">
+          <div class="group-label">${defaultLabel}</div>
+          <label>Team name</label>
+          <input type="text" data-sfteam-name="${round.id}|${side}" value="${escapeAttr(side==='a'?stt.aName:stt.bName)}" placeholder="${defaultLabel}">
+          ${Array.from({length:sfSize}, (_,slot)=>`
+            <select data-sfteam-slot="${round.id}:${side}:${slot}">
+              <option value="">— select player —</option>
+              ${sortedPlayers().map(p=>`<option value="${escapeAttr(p.name)}" ${stt[side][slot]===p.name?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+            </select>
+          `).join('')}
+        </div>`;
+      html += `<details data-details-key="${sfteamsKey}" ${uiDetailsState[sfteamsKey] ? 'open' : ''}><summary>Team Stableford for ${escapeHtml(round.label)} (2 teams, totals their Net Stableford points)</summary><div class="card">
+        <label>Players per team</label>
+        <select data-sfteam-size="${round.id}">
+          ${[2,3,4,5,6].map(n=>`<option value="${n}" ${sfSize===n?'selected':''}>${n} players</option>`).join('')}
+        </select>
+        <p class="muted" style="margin-top:0;">Pick players for each team from the full roster. The Board will show a Team Stableford leaderboard that's just the sum of each player's (net) Stableford points above — no separate scoring.</p>
+        ${sfTeamBlock('a', stt.aName || 'Team 1')}
+        ${sfTeamBlock('b', stt.bName || 'Team 2')}
+      </div></details>`;
+    }
+
     html += renderGameSettings(round);
 
     if(round.format==='pairs'){
@@ -2947,6 +3012,27 @@ function attachHandlers(){
       sel.onchange = async ()=>{
         const [rid, side, slot] = sel.dataset.sixteamSlot.split(':');
         const list = getRound(rid).sixesTeams[side];
+        while(list.length <= Number(slot)) list.push('');
+        list[Number(slot)] = sel.value;
+        await saveState(); render();
+      };
+    });
+
+    document.querySelectorAll('[data-sfteam-name]').forEach(inp=>{
+      inp.onchange = async ()=>{
+        const [rid, side] = inp.dataset.sfteamName.split('|');
+        const stt = getRound(rid).stablefordTeams;
+        if(side==='a') stt.aName = inp.value.trim() || 'Team 1'; else stt.bName = inp.value.trim() || 'Team 2';
+        await saveState(); render();
+      };
+    });
+    document.querySelectorAll('[data-sfteam-size]').forEach(sel=>{
+      sel.onchange = async ()=>{ getRound(sel.dataset.sfteamSize).stablefordTeams.size = Number(sel.value); await saveState(); render(); };
+    });
+    document.querySelectorAll('[data-sfteam-slot]').forEach(sel=>{
+      sel.onchange = async ()=>{
+        const [rid, side, slot] = sel.dataset.sfteamSlot.split(':');
+        const list = getRound(rid).stablefordTeams[side];
         while(list.length <= Number(slot)) list.push('');
         list[Number(slot)] = sel.value;
         await saveState(); render();
